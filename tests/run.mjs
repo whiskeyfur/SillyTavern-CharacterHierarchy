@@ -497,21 +497,59 @@ const pos = (avatar) => {
     const n = nodeFor(chart, K(avatar));
     return [parseFloat(n.style.left), parseFloat(n.style.top)];
 };
-check('each level sits one row lower',
-    pos('Aldia.png')[1] === 0 && pos('Vance.png')[1] === 156 && pos('Brant.png')[1] === 312,
-    JSON.stringify([pos('Aldia.png')[1], pos('Vance.png')[1], pos('Brant.png')[1]]));
-check('siblings sit in adjacent columns',
-    Math.abs(pos('Mira.png')[0] - pos('Brant.png')[0]) === 134);
-check('a parent is centred over its children',
-    pos('Vance.png')[0] === (pos('Brant.png')[0] + pos('Mira.png')[0]) / 2);
+
+// Aldia -> Vance -> {Mira, Brant}. Vance's rank is all leaves, so it stacks.
+check('a parent of only leaves keeps its own row',
+    pos('Aldia.png')[1] === 0 && pos('Vance.png')[1] === 156,
+    JSON.stringify([pos('Aldia.png')[1], pos('Vance.png')[1]]));
+check('a rank of only leaves is stacked down the page, not across it',
+    pos('Mira.png')[0] === pos('Brant.png')[0]
+    && Math.abs(pos('Mira.png')[1] - pos('Brant.png')[1]) === 116,
+    JSON.stringify([pos('Mira.png'), pos('Brant.png')]));
+check('the stack is offset right of its parent, clear of its centre line',
+    pos('Mira.png')[0] - pos('Vance.png')[0] === 82,
+    String(pos('Mira.png')[0] - pos('Vance.png')[0]));
+check('the first of the stack sits on the row it would have had anyway',
+    pos('Mira.png')[1] === 312, String(pos('Mira.png')[1]));
 check('one connector per parent-child link',
     chart.querySelectorAll('svg.ch-links path.ch-link').length === 3,
     String(chart.querySelectorAll('svg.ch-links path.ch-link').length));
+check('a stacked child is joined from the side, not from above',
+    [...chart.querySelectorAll('path.ch-link')].map((p) => p.getAttribute('d'))
+        .some((d) => /^M [\d.]+ 264 V 366 H 82$/.test(d)),
+    [...chart.querySelectorAll('path.ch-link')].map((p) => p.getAttribute('d')).join(' | '));
 check('the chart box includes its own padding, so a small tree never scrolls',
-    chart.style.width === '278px' && chart.style.height === '448px',
+    chart.style.width === '226px' && chart.style.height === '564px',
     `${chart.style.width} x ${chart.style.height}`);
 check('the padding is published to CSS from the one place it is defined',
     chart.style.getPropertyValue('--ch-pad') === '14px');
+
+// A rank with anything below it still spreads out, so the tree shape stays readable.
+setTree({
+    'Aldia.png': node(null),
+    'Vance.png': node('Aldia.png'),
+    'Weather.png': node('Aldia.png'),
+    'Brant.png': node('Vance.png'),
+});
+await redraw();
+check('a rank that is not all leaves still lays out across the page',
+    pos('Vance.png')[0] !== pos('Weather.png')[0]
+    && pos('Vance.png')[1] === pos('Weather.png')[1],
+    JSON.stringify([pos('Vance.png'), pos('Weather.png')]));
+check('and its parent is centred over it',
+    pos('Aldia.png')[0] === (pos('Vance.png')[0] + pos('Weather.png')[0]) / 2,
+    `${pos('Aldia.png')[0]} vs ${(pos('Vance.png')[0] + pos('Weather.png')[0]) / 2}`);
+check('a lone child is not stacked', pos('Brant.png')[0] === pos('Vance.png')[0],
+    JSON.stringify([pos('Brant.png'), pos('Vance.png')]));
+
+// put the tree back for the checks that follow
+setTree({
+    'Aldia.png': node(null),
+    'Vance.png': node('Aldia.png'),
+    'Brant.png': node('Vance.png'),
+    'Mira.png': node('Vance.png'),
+});
+await redraw();
 
 // ---------- T18: a drop that would close a loop is refused ----------
 dragTo(nodeFor(chart, K('Aldia.png')), nodeFor(chart, K('Brant.png')));

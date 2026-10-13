@@ -993,6 +993,14 @@ const COLUMN_GAP = 18;
 const ROW_GAP = 48;
 const ROOT_GAP = 34;
 
+/**
+ * A rank of nothing but leaves is stacked down the page rather than spread across it, since
+ * width is the scarce direction: three names cost 198px stacked against 384px side by side.
+ * The indent clears the parent's centre line, so the connector stubs run rightwards.
+ */
+const STACK_INDENT = Math.round(NODE_WIDTH / 2) + 24;
+const STACK_GAP = 8;
+
 /** Breathing room inside the chart. Pushed into CSS so the two cannot drift apart. */
 const CHART_PADDING = 14;
 
@@ -1094,17 +1102,41 @@ function layoutForest() {
     const positions = new Map();
     const seen = new Set();
     let column = 0;
-    let deepest = 0;
+
+    const rowY = (depth) => depth * (NODE_HEIGHT + ROW_GAP);
 
     const place = (key, depth) => {
         if (seen.has(key)) {
             return null;
         }
         seen.add(key);
-        deepest = Math.max(deepest, depth);
+
+        const children = getChildren(key).filter(isShown).sort(byName);
+
+        // Nothing below this rank, so stack it instead of spreading it out.
+        const stacks = children.length > 1
+            && children.every((child) => getChildren(child).filter(isShown).length === 0);
+
+        if (stacks) {
+            const x = column;
+            column += STACK_INDENT + NODE_WIDTH + COLUMN_GAP;
+            positions.set(key, { x, y: rowY(depth), depth });
+
+            children.forEach((child, index) => {
+                seen.add(child);
+                positions.set(child, {
+                    x: x + STACK_INDENT,
+                    y: rowY(depth) + NODE_HEIGHT + ROW_GAP + index * (NODE_HEIGHT + STACK_GAP),
+                    depth: depth + 1,
+                    stacked: true,
+                });
+            });
+
+            return x;
+        }
 
         const childCentres = [];
-        for (const child of getChildren(key).filter(isShown).sort(byName)) {
+        for (const child of children) {
             const centre = place(child, depth + 1);
             if (centre !== null) {
                 childCentres.push(centre);
@@ -1119,7 +1151,7 @@ function layoutForest() {
             column += NODE_WIDTH + COLUMN_GAP;
         }
 
-        positions.set(key, { x, y: depth * (NODE_HEIGHT + ROW_GAP), depth });
+        positions.set(key, { x, y: rowY(depth), depth });
         return x;
     };
 
@@ -1139,15 +1171,18 @@ function layoutForest() {
         column += ROOT_GAP;
     }
 
+    // Measured from the boxes rather than the rank count: a stack runs past its own rank.
     let widest = 0;
+    let lowest = 0;
     for (const position of positions.values()) {
         widest = Math.max(widest, position.x);
+        lowest = Math.max(lowest, position.y);
     }
 
     return {
         positions,
         width: positions.size ? widest + NODE_WIDTH : 0,
-        height: positions.size ? (deepest + 1) * NODE_HEIGHT + deepest * ROW_GAP : 0,
+        height: positions.size ? lowest + NODE_HEIGHT : 0,
     };
 }
 
@@ -1737,12 +1772,19 @@ function renderChart() {
 
         const fromX = parentPosition.x + NODE_WIDTH / 2;
         const fromY = parentPosition.y + NODE_HEIGHT;
-        const toX = position.x + NODE_WIDTH / 2;
-        const elbowY = fromY + ROW_GAP / 2;
 
         const path = document.createElementNS(SVG_NS, 'path');
         path.setAttribute('class', 'ch-link');
-        path.setAttribute('d', `M ${fromX} ${fromY} V ${elbowY} H ${toX} V ${position.y}`);
+
+        if (position.stacked) {
+            // Down the parent's centre line, then a stub into the child's left edge.
+            const midY = position.y + NODE_HEIGHT / 2;
+            path.setAttribute('d', `M ${fromX} ${fromY} V ${midY} H ${position.x}`);
+        } else {
+            const toX = position.x + NODE_WIDTH / 2;
+            path.setAttribute('d', `M ${fromX} ${fromY} V ${fromY + ROW_GAP / 2} H ${toX} V ${position.y}`);
+        }
+
         svg.append(path);
     }
 
