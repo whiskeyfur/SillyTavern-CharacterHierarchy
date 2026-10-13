@@ -24,7 +24,7 @@
  */
 .ch-drawer {
     position: fixed;
-    width: min(96vw, 1180px);
+    width: min(86vw, 1062px);
     min-width: 320px !important;
     min-height: 200px !important;
 }
