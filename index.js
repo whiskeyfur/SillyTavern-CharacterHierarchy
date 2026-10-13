@@ -2987,9 +2987,9 @@ async function showPreview() {
         lines.push('', `World info in the prompt: ${total} characters.`);
     }
 
-    const content = el('div', {}, [
-        el('h3', { textContent: 'Character Hierarchy — inheritance preview' }),
-        el('div', { className: 'ch-preview', textContent: lines.join('\n') }),
+    const content = el('div', { className: 'ch-preview-popup' }, [
+        el('h3', { className: 'ch-preview-title', textContent: 'Character Hierarchy — inheritance preview' }),
+        el('div', { className: 'ch-preview', textContent: lines.join('\n'), tabIndex: 0 }),
     ]);
 
     await new Popup(content, POPUP_TYPE.DISPLAY, '', { wide: true, large: true }).show();

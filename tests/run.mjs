@@ -1030,6 +1030,25 @@ check('and explains that a keyed entry waits for its key',
 check('it counts how many are live',
     /\d+ of them are in the prompt right now/.test(previewText));
 
+// The listing is long, so it has to read as a scrollable panel that fills the popup rather
+// than a block of text sitting in a half-empty modal.
+const previewBox = globalThis.__lastPopup?.querySelector('.ch-preview');
+check('the preview claims the whole popup',
+    globalThis.__lastPopup?.classList.contains('ch-preview-popup'),
+    globalThis.__lastPopup?.className);
+check('and the listing is focusable, so it can be scrolled from the keyboard',
+    previewBox?.tabIndex === 0, String(previewBox?.tabIndex));
+
+const sheet = readFileSync(path.join(EXT_SRC, 'style.css'), 'utf-8');
+check('the listing fills the space rather than capping itself',
+    /\.ch-preview \{[^}]*flex: 1 1 auto[^}]*min-height: 0/s.test(sheet)
+    && !/\.ch-preview \{[^}]*max-height: 60vh/s.test(sheet));
+check('it is drawn as a bordered panel, so its edges are visible',
+    /\.ch-preview \{[^}]*border: 1px solid/s.test(sheet));
+check('and its scrollbar is styled to be seen',
+    /\.ch-preview::-webkit-scrollbar-thumb/.test(sheet)
+    && /\.ch-preview \{[^}]*scrollbar-color/s.test(sheet));
+
 // ---------- T28: the master switch ----------
 S().enabled = false;
 check('the master switch stops all injection', (await scan()).length === 0);
