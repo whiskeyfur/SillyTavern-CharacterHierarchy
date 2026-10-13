@@ -2891,8 +2891,14 @@ async function showPreview() {
     // The two sections below come from SillyTavern itself, which always works on the open
     // character - it has no notion of a node being selected on a chart.
     const openAvatar = context.characters?.[context.characterId]?.avatar;
-    if (speakerOverride && openAvatar && speakerOverride !== openAvatar) {
-        lines.push('', `Note: everything below is for ${displayName(charKey(openAvatar))}, who is open,`
+    const openName = openAvatar ? displayName(charKey(openAvatar)) : '';
+
+    if (!openName) {
+        lines.push('', 'No character is open, so there is no prompt to build yet. The listing'
+            + ' below is the world info SillyTavern can see from here; open a chat to see what'
+            + ' would actually be sent.');
+    } else if (speakerOverride && speakerOverride !== openAvatar) {
+        lines.push('', `Note: everything below is for ${openName}, who is open,`
             + ` not ${displayName(selectedKey)}, who is selected.`);
     }
 
@@ -2939,7 +2945,13 @@ async function showPreview() {
     // ---- what SillyTavern would actually put in the prompt
     lines.push('', '─'.repeat(72), '');
 
-    if (!assembled) {
+    if (!openName) {
+        lines.push('PROMPT PREVIEW — nothing to show while no character is open.');
+        lines.push('');
+        lines.push(selectedKey && keyType(selectedKey) === NODE_TYPES.CHARACTER
+            ? `Double-click ${displayName(selectedKey)} on the chart to open its chat, then look again.`
+            : 'Open a character, then look again.');
+    } else if (!assembled) {
         lines.push('PROMPT PREVIEW — unavailable; see the console for why.');
     } else {
         const depthEntries = assembled.WIDepthEntries ?? [];
@@ -2953,7 +2965,7 @@ async function showPreview() {
         lines.push(assembled.worldInfoBefore?.trimEnd() || '  (nothing)');
         lines.push('');
         lines.push('├─ character definitions ' + '─'.repeat(47));
-        lines.push(`  (${displayName(charKey(openAvatar ?? ''))}'s description, personality and scenario)`);
+        lines.push(`  (${openName}'s description, personality and scenario)`);
         lines.push('');
         lines.push('├─ after character definitions ' + '─'.repeat(41));
         lines.push(assembled.worldInfoAfter?.trimEnd() || '  (nothing)');

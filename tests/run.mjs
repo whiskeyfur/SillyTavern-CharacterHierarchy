@@ -1049,6 +1049,28 @@ check('and its scrollbar is styled to be seen',
     /\.ch-preview::-webkit-scrollbar-thumb/.test(sheet)
     && /\.ch-preview \{[^}]*scrollbar-color/s.test(sheet));
 
+// With no chat open there is no prompt to build; saying so beats an empty skeleton with a
+// blank name where the character should be.
+const openedCharacter = globalThis.__ctx.characterId;
+globalThis.__ctx.characterId = undefined;
+globalThis.__lastPopup = null;
+await showPreviewFromHeader();
+const noCharText = globalThis.__lastPopup?.querySelector('.ch-preview')?.textContent ?? '';
+
+check('with nothing open, the preview says so rather than drawing an empty prompt',
+    noCharText.includes('nothing to show while no character is open'),
+    noCharText.slice(noCharText.indexOf('PROMPT PREVIEW'), noCharText.indexOf('PROMPT PREVIEW') + 120));
+check('it does not print a blank name where the character should be',
+    !noCharText.includes("('s description"), 'blank character name rendered');
+check('and points at the way to open one',
+    /Double-click .+ on the chart to open its chat/.test(noCharText)
+    || noCharText.includes('Open a character, then look again'),
+    noCharText.slice(-200));
+check('the combined listing is still shown, since it is still meaningful',
+    noCharText.includes('COMBINED WORLD INFO'));
+
+globalThis.__ctx.characterId = openedCharacter;
+
 // ---------- T28: the master switch ----------
 S().enabled = false;
 check('the master switch stops all injection', (await scan()).length === 0);
