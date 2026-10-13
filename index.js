@@ -1219,6 +1219,8 @@ function buildCardBox(key, indexes) {
     // Right-click takes a node off the chart, as does dragging it away.
     box.addEventListener('contextmenu', (event) => {
         event.preventDefault();
+        // Keep it off SillyTavern's own context menu handlers further up the tree.
+        event.stopPropagation();
         detachFromChart(key);
     });
 
@@ -1363,6 +1365,7 @@ function onDragMove(event) {
         }
         dragState.moved = true;
         dragState.source.classList.add('ch-node-dragging');
+        releaseListPress();
 
         const ghost = buildCardBox(dragState.key, indexByAvatar());
         ghost.classList.add('ch-ghost');
@@ -1445,6 +1448,23 @@ function onDragEnd(event) {
 
     selectedKey = state.key;
     renderAll();
+}
+
+/**
+ * Tells SillyTavern the press on a character list row is over, once our own drag has taken the
+ * gesture over.
+ *
+ * Its bulk edit overlay arms a long-press timer on a row's mousedown and cancels it on mouseup
+ * over the row or the list. Our drag ends over the chart, so neither fires and the timer runs
+ * on to switch bulk edit mode on by itself. A bubbling mouseup reaches both of its cancels,
+ * which is what a native drag would have done — it already listens for dragend the same way.
+ */
+function releaseListPress() {
+    if (dragState?.origin !== 'list' || !dragState.source) {
+        return;
+    }
+
+    dragState.source.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 }
 
 /**

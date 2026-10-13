@@ -40,7 +40,7 @@ const dom = new JSDOM(`<!doctype html><html><body>
 
 for (const key of ['window', 'document', 'Element', 'HTMLElement', 'HTMLInputElement',
     'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLOptionElement', 'Node',
-    'DocumentFragment', 'Event', 'CustomEvent', 'File', 'MutationObserver']) {
+    'DocumentFragment', 'Event', 'CustomEvent', 'MouseEvent', 'File', 'MutationObserver']) {
     globalThis[key] = key === 'window' ? dom.window : dom.window[key];
 }
 
@@ -439,6 +439,25 @@ const nativeDrag = new dom.window.Event('dragstart', { bubbles: true, cancelable
 listRow('Brant.png').querySelector('img').dispatchEvent(nativeDrag);
 check('a native image drag out of a list row is suppressed', nativeDrag.defaultPrevented);
 check('rows are not natively draggable', listRow('Brant.png').draggable === false);
+
+// SillyTavern's bulk edit overlay arms a long-press timer on a row's mousedown and cancels it
+// on mouseup over the row or the list. Our drag releases over the chart, so unless we say the
+// press is over the timer runs on and switches bulk edit mode on by itself.
+let sawMouseUp = 0;
+let sawBubbledMouseUp = 0;
+const pressedRow = listRow('Weather.png');
+pressedRow.addEventListener('mouseup', () => { sawMouseUp += 1; });
+charList.addEventListener('mouseup', () => { sawBubbledMouseUp += 1; });
+pressedRow.dispatchEvent(pev('pointerdown', 0, 0));
+chart.dispatchEvent(pev('pointermove', 60, 60));
+check('a list drag tells the row its press is over', sawMouseUp === 1, String(sawMouseUp));
+check('and that reaches the list, which is where the other cancel lives',
+    sawBubbledMouseUp === 1, String(sawBubbledMouseUp));
+chart.dispatchEvent(pev('pointerup', 60, 60));
+
+// That drag landed a node; clear it so the next block starts from an empty chart.
+S().nodes = {};
+await redraw();
 
 // Pressing on a row's text must not start a text selection: the browser takes the pointer
 // over for it and cancels the drag. jsdom has no selection model, so this pins the marker
