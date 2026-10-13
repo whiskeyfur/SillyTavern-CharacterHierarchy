@@ -23,6 +23,12 @@ When Sir Brant speaks, the world info scan sees *Brant's Private Lore*, *Vance F
 Brant's own book. Neither card needs the other's lorebooks attached by hand, and adding a fact
 to *Aldian History* reaches every character in the kingdom at once.
 
+![The chart, with two trees side by side. Earth is the root of one, with North America and
+South America beneath it, USA under North America, and Mary, Paul and Peter on the bottom row.
+A persona called Whiskey is selected, with its actions showing underneath. The second tree is
+rooted on a Warhammer 40,000 lorebook, drawn as a book icon, with the character Adrastor nested
+under it.](media/panel.png)
+
 ## What you get
 
 - A drag-and-drop **org chart** in its own top bar panel, fed straight from SillyTavern's own
