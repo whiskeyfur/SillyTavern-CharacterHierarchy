@@ -1,0 +1,385 @@
+/*
+ * Character Hierarchy. The chart lives in its own top bar drawer; the Extensions tab only
+ * holds a pointer to it. Class names are prefixed, so these rules are not id-scoped.
+ */
+
+.ch-hint {
+    font-size: calc(var(--mainFontSize) * 0.85);
+    opacity: 0.7;
+    margin: 0.25em 0 0.75em 0;
+    line-height: 1.3;
+}
+
+.ch-subdrawer {
+    margin: 0.5em 0;
+    padding-left: 0.5em;
+    border-left: 2px solid var(--SmartThemeBorderColor);
+}
+
+/* ---------------------------------------------------------------- the drawer */
+
+/*
+ * Wider than the default drawer, which is sized for forms rather than a chart. Fixed
+ * positioning matches the other draggable panels so movingUI can move this one too.
+ */
+.ch-drawer {
+    position: fixed;
+    width: min(96vw, 1180px);
+    min-width: 320px !important;
+    min-height: 200px !important;
+}
+
+.ch-drawer-inner {
+    padding: 0 5px 5px;
+}
+
+.ch-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+}
+
+.ch-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    flex-wrap: wrap;
+}
+
+.ch-panel-head .menu_button {
+    margin: 0;
+}
+
+/* ---------------------------------------------------------------- workspace *//* ---------------------------------------------------------------- workspace */
+
+.ch-workspace {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5em;
+    height: min(52vh, 540px);
+    min-height: 240px;
+}
+
+.ch-chart-pane {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: auto;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    background-image:
+        radial-gradient(circle, var(--SmartThemeBorderColor) 1px, transparent 1px);
+    background-size: 22px 22px;
+}
+
+/*
+ * The chart sizes itself to the laid-out tree, so the pane can scroll around it. Absolutely
+ * positioned children resolve against the padding edge, not the padding box, so the same
+ * --ch-pad offsets the boxes and the connector layer by hand.
+ */
+.ch-chart {
+    --ch-pad: 14px;
+    position: relative;
+    min-width: 100%;
+    min-height: 100%;
+    padding: var(--ch-pad);
+    box-sizing: content-box;
+}
+
+.ch-chart.ch-drop-ok {
+    outline: 2px dashed var(--SmartThemeQuoteColor);
+    outline-offset: -4px;
+}
+
+.ch-links {
+    position: absolute;
+    top: var(--ch-pad);
+    left: var(--ch-pad);
+    overflow: visible;
+    pointer-events: none;
+}
+
+.ch-link {
+    fill: none;
+    stroke: var(--SmartThemeBorderColor);
+    stroke-width: 2;
+}
+
+.ch-tray-pane {
+    flex: 0 0 168px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.ch-tray-head {
+    font-size: calc(var(--mainFontSize) * 0.85);
+    opacity: 0.75;
+}
+
+.ch-tray-filter {
+    margin: 0;
+}
+
+.ch-tray {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border: 1px dashed var(--SmartThemeBorderColor);
+    border-radius: 6px;
+}
+
+.ch-tray.ch-drop-ok {
+    border-style: solid;
+    border-color: var(--SmartThemeQuoteColor);
+    background-color: var(--white20a);
+}
+
+/* ---------------------------------------------------------------- card boxes */
+
+.ch-node {
+    width: 116px;
+    height: 108px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 3px;
+    padding: 6px 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background-color: var(--SmartThemeBlurTintColor);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+    overflow: hidden;
+}
+
+/* Inside the chart the boxes are positioned by the layout; in the tray they just stack. */
+.ch-chart > .ch-node {
+    position: absolute;
+    margin: var(--ch-pad) 0 0 var(--ch-pad);
+}
+
+.ch-node:hover {
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.ch-node-selected {
+    border-color: var(--SmartThemeQuoteColor);
+    box-shadow: 0 0 0 2px var(--SmartThemeQuoteColor) inset;
+}
+
+.ch-node-info {
+    border-style: dashed;
+}
+
+.ch-node-missing {
+    opacity: 0.55;
+}
+
+.ch-node-dragging {
+    opacity: 0.3;
+}
+
+.ch-node.ch-drop-ok {
+    border-color: var(--SmartThemeQuoteColor);
+    box-shadow: 0 0 0 3px var(--SmartThemeQuoteColor);
+}
+
+.ch-node.ch-drop-bad {
+    border-color: var(--crimson70a, crimson);
+    box-shadow: 0 0 0 3px var(--crimson70a, crimson);
+    cursor: no-drop;
+}
+
+.ch-node-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: 0 0 auto;
+    pointer-events: none;
+}
+
+.ch-node-name {
+    width: 100%;
+    text-align: center;
+    font-size: calc(var(--mainFontSize) * 0.85);
+    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.ch-node-meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0 5px;
+    width: 100%;
+    font-size: calc(var(--mainFontSize) * 0.68);
+    opacity: 0.7;
+    text-align: center;
+    pointer-events: none;
+}
+
+.ch-node-info .ch-node-role {
+    color: var(--SmartThemeQuoteColor);
+    opacity: 1;
+}
+
+/* The drag ghost follows the pointer and must never become the event target. */
+.ch-ghost {
+    position: fixed;
+    z-index: 10000;
+    margin: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+    opacity: 0.9;
+    pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.ch-empty {
+    opacity: 0.6;
+    padding: 0.75em;
+    text-align: center;
+    font-size: calc(var(--mainFontSize) * 0.85);
+}
+
+/* ---------------------------------------------------------------- card editor */
+
+.ch-editor-panel {
+    margin-top: 0.5em;
+    padding: 0.5em;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+}
+
+.ch-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+    text-align: left;
+}
+
+.ch-editor-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+}
+
+.ch-editor-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: 0 0 auto;
+}
+
+.ch-editor-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ch-editor-name {
+    font-weight: bold;
+}
+
+.ch-editor-file {
+    font-size: calc(var(--mainFontSize) * 0.78);
+    opacity: 0.6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ch-editor-header .menu_button {
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.ch-editor-grid {
+    display: flex;
+    gap: 0.75em;
+    flex-wrap: wrap;
+}
+
+.ch-editor-grid > div {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.ch-editor-subhead {
+    margin-top: 0.4em;
+    font-weight: bold;
+    font-size: calc(var(--mainFontSize) * 0.88);
+}
+
+.ch-books-select {
+    min-height: 7em;
+}
+
+.ch-inherited {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ch-inherited-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75em;
+    font-size: calc(var(--mainFontSize) * 0.85);
+    padding: 2px 4px;
+    border-radius: 4px;
+    background-color: var(--white20a);
+}
+
+.ch-inherited-from {
+    opacity: 0.65;
+    white-space: nowrap;
+}
+
+.ch-preview {
+    text-align: left;
+    white-space: pre-wrap;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: calc(var(--mainFontSize) * 0.85);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+#character_hierarchy_button.ch-active {
+    color: var(--SmartThemeQuoteColor);
+}
+
+@media screen and (max-width: 1000px) {
+    .ch-workspace {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .ch-chart-pane {
+        height: 320px;
+        flex: 0 0 auto;
+    }
+
+    .ch-tray-pane {
+        flex: 0 0 auto;
+    }
+
+    .ch-tray {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        max-height: 180px;
+    }
+}

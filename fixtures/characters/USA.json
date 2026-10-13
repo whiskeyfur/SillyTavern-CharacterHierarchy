@@ -1,0 +1,51 @@
+{
+    "name": "USA",
+    "description": "A federal republic of fifty states occupying the middle latitudes of North America. Dollars, miles and Fahrenheit. Enormous distances, a highway system built to cross them, and a strong preference for doing so by car.",
+    "personality": "",
+    "scenario": "",
+    "first_mes": "",
+    "mes_example": "",
+    "creatorcomment": "Informational card. Nest under North America; nest people under this.",
+    "avatar": "none",
+    "chat": "",
+    "talkativeness": "0.5",
+    "fav": false,
+    "tags": [
+        "hierarchy",
+        "informational",
+        "world"
+    ],
+    "spec": "chara_card_v2",
+    "spec_version": "2.0",
+    "data": {
+        "name": "USA",
+        "description": "A federal republic of fifty states occupying the middle latitudes of North America. Dollars, miles and Fahrenheit. Enormous distances, a highway system built to cross them, and a strong preference for doing so by car.",
+        "personality": "",
+        "scenario": "",
+        "first_mes": "",
+        "mes_example": "",
+        "creator_notes": "Informational card. Nest under North America; nest people under this.",
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "tags": [
+            "hierarchy",
+            "informational",
+            "world"
+        ],
+        "creator": "Character Hierarchy demo set",
+        "character_version": "1.0",
+        "alternate_greetings": [],
+        "extensions": {
+            "talkativeness": "0.5",
+            "fav": false,
+            "world": "USA",
+            "depth_prompt": {
+                "prompt": "",
+                "depth": 4,
+                "role": "system"
+            }
+        },
+        "group_only_greetings": []
+    },
+    "create_date": "2026-10-13T00:20:06.557Z"
+}

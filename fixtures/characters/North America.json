@@ -1,0 +1,51 @@
+{
+    "name": "North America",
+    "description": "A continent reaching from the Arctic to the tropics, bounded by the Pacific, the Atlantic and the Gulf. Mountains down the western edge, grassland through the middle, old worn hills in the east. Canada, the United States, Mexico, Central America and the Caribbean islands.",
+    "personality": "",
+    "scenario": "",
+    "first_mes": "",
+    "mes_example": "",
+    "creatorcomment": "Informational card. Nest under Earth; nest countries under this.",
+    "avatar": "none",
+    "chat": "",
+    "talkativeness": "0.5",
+    "fav": false,
+    "tags": [
+        "hierarchy",
+        "informational",
+        "world"
+    ],
+    "spec": "chara_card_v2",
+    "spec_version": "2.0",
+    "data": {
+        "name": "North America",
+        "description": "A continent reaching from the Arctic to the tropics, bounded by the Pacific, the Atlantic and the Gulf. Mountains down the western edge, grassland through the middle, old worn hills in the east. Canada, the United States, Mexico, Central America and the Caribbean islands.",
+        "personality": "",
+        "scenario": "",
+        "first_mes": "",
+        "mes_example": "",
+        "creator_notes": "Informational card. Nest under Earth; nest countries under this.",
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "tags": [
+            "hierarchy",
+            "informational",
+            "world"
+        ],
+        "creator": "Character Hierarchy demo set",
+        "character_version": "1.0",
+        "alternate_greetings": [],
+        "extensions": {
+            "talkativeness": "0.5",
+            "fav": false,
+            "world": "North America",
+            "depth_prompt": {
+                "prompt": "",
+                "depth": 4,
+                "role": "system"
+            }
+        },
+        "group_only_greetings": []
+    },
+    "create_date": "2026-10-13T00:20:06.557Z"
+}

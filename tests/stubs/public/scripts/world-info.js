@@ -1,0 +1,16 @@
+export const METADATA_KEY = 'world_info';
+export let selected_world_info = [];
+export const world_info = { charLore: [] };
+export const world_info_position = { before: 0, after: 1, ANTop: 2, ANBottom: 3, atDepth: 4 };
+export const newWorldInfoEntryTemplate = {
+    key: [], keysecondary: [], comment: '', content: '', constant: false, vectorized: false,
+    selective: true, selectiveLogic: 0, addMemo: false, order: 100, position: 0, disable: false,
+    ignoreBudget: false, excludeRecursion: false, preventRecursion: false, probability: 100,
+    useProbability: true, depth: 4, group: '', groupOverride: false, groupWeight: 100,
+    scanDepth: null, caseSensitive: null, matchWholeWords: null, useGroupScoring: null,
+    automationId: '', role: 0, sticky: null, cooldown: null, delay: null, triggers: [],
+};
+export async function loadWorldInfo(name) {
+    return globalThis.__books[name] ?? null;
+}
+export function setGlobalBooks(list) { selected_world_info = list; }

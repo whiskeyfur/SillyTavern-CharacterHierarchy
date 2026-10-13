@@ -1,0 +1,14 @@
+{
+    "name": "character-hierarchy-tests",
+    "private": true,
+    "type": "module",
+    "description": "Behavioural tests for the Character Hierarchy extension. Run with: npm install && npm test",
+    "scripts": {
+        "test": "node run.mjs && node fixtures.mjs",
+        "test:unit": "node run.mjs",
+        "test:fixtures": "node fixtures.mjs"
+    },
+    "dependencies": {
+        "jsdom": "^29.1.1"
+    }
+}

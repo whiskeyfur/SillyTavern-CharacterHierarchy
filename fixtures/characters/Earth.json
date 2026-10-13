@@ -1,0 +1,51 @@
+{
+    "name": "Earth",
+    "description": "The third planet from the Sun: one moon, breathable air, liquid water across most of its surface, and a single biosphere shared by everything alive. Day is twenty-four hours, a year is a little over three hundred and sixty-five of them. Everything that happens here happens under the same sky.",
+    "personality": "",
+    "scenario": "",
+    "first_mes": "",
+    "mes_example": "",
+    "creatorcomment": "Informational card. Root of the demo hierarchy — nest continents under this.",
+    "avatar": "none",
+    "chat": "",
+    "talkativeness": "0.5",
+    "fav": false,
+    "tags": [
+        "hierarchy",
+        "informational",
+        "world"
+    ],
+    "spec": "chara_card_v2",
+    "spec_version": "2.0",
+    "data": {
+        "name": "Earth",
+        "description": "The third planet from the Sun: one moon, breathable air, liquid water across most of its surface, and a single biosphere shared by everything alive. Day is twenty-four hours, a year is a little over three hundred and sixty-five of them. Everything that happens here happens under the same sky.",
+        "personality": "",
+        "scenario": "",
+        "first_mes": "",
+        "mes_example": "",
+        "creator_notes": "Informational card. Root of the demo hierarchy — nest continents under this.",
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "tags": [
+            "hierarchy",
+            "informational",
+            "world"
+        ],
+        "creator": "Character Hierarchy demo set",
+        "character_version": "1.0",
+        "alternate_greetings": [],
+        "extensions": {
+            "talkativeness": "0.5",
+            "fav": false,
+            "world": "Earth",
+            "depth_prompt": {
+                "prompt": "",
+                "depth": 4,
+                "role": "system"
+            }
+        },
+        "group_only_greetings": []
+    },
+    "create_date": "2026-10-13T00:20:06.557Z"
+}
