@@ -23,6 +23,8 @@
  * positioning matches the other draggable panels so movingUI can move this one too.
  */
 .ch-drawer {
+    /* Breathing room kept on both sides of whatever space the panel actually has. */
+    --ch-gutter: 24px;
     position: fixed;
     width: min(86vw, 1062px);
     min-width: 320px !important;
@@ -36,7 +38,12 @@
  */
 .ch-drawer.ch-beside-list {
     right: var(--ch-list-width, 0px);
-    max-width: calc(100vw - var(--ch-list-width, 0px) - 16px);
+    /*
+     * Without this the panel keeps its full width and ends up wedged between the screen edge
+     * and the list with nothing to spare. Capping it leaves a gutter on both sides of the
+     * room that is left, and margin: 0 auto shares that space evenly.
+     */
+    max-width: calc(100vw - var(--ch-list-width, 0px) - 2 * var(--ch-gutter));
 }
 
 .ch-drawer-inner {
