@@ -31,6 +31,7 @@
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 import {
     METADATA_KEY,
+    checkWorldInfo,
     getSortedEntries,
     loadWorldInfo,
     newWorldInfoEntryTemplate,
@@ -2820,7 +2821,9 @@ async function assembleWorldInfo(context) {
 
         const fields = context.getCharacterCardFields?.() ?? {};
 
-        return await context.getWorldInfoPrompt(chatForWI, Number(context.maxContext) || 4096, true, {
+        // checkWorldInfo rather than getWorldInfoPrompt: it hands back which entries actually
+        // fired as well as the text, and that is the question the preview is really asked.
+        return await checkWorldInfo(chatForWI, Number(context.maxContext) || 4096, true, {
             personaDescription: fields.persona ?? '',
             characterDescription: fields.description ?? '',
             characterPersonality: fields.personality ?? '',
@@ -2894,6 +2897,10 @@ async function showPreview() {
     }
 
     // ---- every entry that would be considered, in the order they are weighed
+    const assembled = await assembleWorldInfo(context);
+    const firing = new Set([...(assembled?.allActivatedEntries ?? [])]
+        .map((entry) => `${entry.world}.${entry.uid}`));
+
     const inherited = new Set(result.entries.map((entry) => `${entry.world}.${entry.uid}`));
     let combined = [];
     try {
@@ -2902,35 +2909,42 @@ async function showPreview() {
         console.error(`${LOG} could not list the combined entries`, error);
     }
 
-    lines.push('', '─'.repeat(72), '');
-    lines.push(`COMBINED WORLD INFO — ${combined.length} entries, highest priority first`);
-    lines.push('(order, where it lands, whether it is always on, and where it came from)', '');
+    const live = combined.filter((entry) => !entry.disable);
+    const keyedAsleep = live.filter((entry) => !entry.constant
+        && !firing.has(`${entry.world}.${entry.uid}`)).length;
 
-    for (const entry of combined) {
-        if (entry.disable) {
-            continue;
-        }
+    lines.push('', '─'.repeat(72), '');
+    lines.push(`COMBINED WORLD INFO — ${live.length} entries, highest priority first`);
+    lines.push(`${firing.size} of them are in the prompt right now.`, '');
+
+    for (const entry of live) {
+        const on = firing.has(`${entry.world}.${entry.uid}`) ? '●' : '○';
         const mine = inherited.has(`${entry.world}.${entry.uid}`) ? '▸' : ' ';
         const order = String(entry.order ?? 0).padStart(5);
         const where = (POSITION_LABELS[entry.position] ?? `position ${entry.position}`)
             + (entry.position === world_info_position.atDepth ? ` ${entry.depth}` : '');
-        const trigger = entry.constant ? 'always' : 'keyed';
-        lines.push(`${mine} ${order}  ${where.padEnd(18)} ${trigger.padEnd(6)} ${entry.world} — ${entryLabel(entry)}`);
+        const trigger = entry.constant ? 'always' : `keyed: ${(entry.key ?? []).join(', ') || '(no keys)'}`;
+        lines.push(`${on}${mine} ${order}  ${where.padEnd(18)} ${entry.world} — ${entryLabel(entry)}`);
+        lines.push(`      ${trigger}`);
     }
 
-    lines.push('', '▸ marks an entry this extension added through the hierarchy.');
+    lines.push('', '● is in the prompt now, ○ is not. ▸ was added by the hierarchy.');
+
+    if (keyedAsleep) {
+        lines.push(`${keyedAsleep} keyed ${keyedAsleep === 1 ? 'entry is' : 'entries are'} waiting:`
+            + ' a keyed entry only enters the prompt once one of its keys appears in the recent'
+            + ' chat. Being inherited gets an entry scanned, not switched on.');
+    }
 
     // ---- what SillyTavern would actually put in the prompt
-    const assembled = await assembleWorldInfo(context);
-
     lines.push('', '─'.repeat(72), '');
 
     if (!assembled) {
         lines.push('PROMPT PREVIEW — unavailable; see the console for why.');
     } else {
-        const depthEntries = assembled.worldInfoDepth ?? [];
-        const anBefore = assembled.anBefore ?? [];
-        const anAfter = assembled.anAfter ?? [];
+        const depthEntries = assembled.WIDepthEntries ?? [];
+        const anBefore = assembled.ANBeforeEntries ?? [];
+        const anAfter = assembled.ANAfterEntries ?? [];
 
         lines.push('PROMPT PREVIEW — what a generation right now would be built from.');
         lines.push('Only the world info is shown; the chat itself and the system prompt are not.', '');
@@ -2967,7 +2981,7 @@ async function showPreview() {
 
         lines.push('└' + '─'.repeat(71));
 
-        const total = (assembled.worldInfoString ?? '').length
+        const total = (assembled.worldInfoBefore ?? '').length + (assembled.worldInfoAfter ?? '').length
             + depthEntries.reduce((sum, item) => sum
                 + (Array.isArray(item.entries) ? item.entries.join('').length : 0), 0);
         lines.push('', `World info in the prompt: ${total} characters.`);

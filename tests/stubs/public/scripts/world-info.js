@@ -25,3 +25,21 @@ export async function getSortedEntries() {
     await globalThis.__ctx.eventSource.emit('worldinfo_entries_loaded', payload);
     return [...payload.globalLore, ...payload.characterLore].sort((a, b) => b.order - a.order);
 }
+
+/** Stand-in for the real scan: reports what fired and the text it produced. */
+export async function checkWorldInfo(chat, maxContext, isDryRun) {
+    globalThis.__wiScan = { chat, maxContext, isDryRun };
+    const sorted = await getSortedEntries();
+    // Only always-on entries fire here; a keyed one needs its key in the chat.
+    const activated = new Set(sorted.filter((entry) => entry.constant));
+    return {
+        worldInfoBefore: 'BEFORE-TEXT',
+        worldInfoAfter: 'AFTER-TEXT',
+        EMEntries: [],
+        WIDepthEntries: [{ depth: 4, role: 0, entries: ['DEPTH-TEXT'] }],
+        ANBeforeEntries: [],
+        ANAfterEntries: [],
+        outletEntries: {},
+        allActivatedEntries: activated,
+    };
+}

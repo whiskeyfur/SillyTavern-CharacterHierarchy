@@ -992,7 +992,7 @@ setTree({ 'Aldia.png': node(null, { books: ['Shared Book'] }), 'Brant.png': node
 await redraw();
 globalThis.__ctx.characterId = idxOf('Brant.png');
 clickCard(nodeFor(chart, K('Brant.png')));
-globalThis.__wiPrompt = null;
+globalThis.__wiScan = null;
 globalThis.__lastPopup = null;
 await showPreviewFromHeader();
 
@@ -1003,10 +1003,10 @@ check('it lists the combined entries by priority',
     previewText.includes('COMBINED WORLD INFO'), previewText.slice(0, 120));
 check('and marks the ones the hierarchy added', previewText.includes('▸'));
 check('it shows where each entry lands', previewText.includes('before char defs'));
-check('it asks SillyTavern to assemble the prompt as a dry run',
-    globalThis.__wiPrompt?.isDryRun === true, JSON.stringify(globalThis.__wiPrompt?.isDryRun));
-check('and passes the chat newest-first, as a generation would',
-    Array.isArray(globalThis.__wiPrompt?.chatForWI));
+check('it asks SillyTavern to run the scan as a dry run',
+    globalThis.__wiScan?.isDryRun === true, JSON.stringify(globalThis.__wiScan?.isDryRun));
+check('and passes it the chat, as a generation would',
+    Array.isArray(globalThis.__wiScan?.chat));
 // The section headers are the landmarks; "character definitions" alone also matches the
 // "before character definitions" header above it.
 check('it shows the assembled text in prompt order',
@@ -1017,6 +1017,18 @@ check('including what lands inside the chat at depth',
     previewText.includes('DEPTH-TEXT') && previewText.includes('depth 4'));
 check('and says how much of the prompt it accounts for',
     /World info in the prompt: \d+ characters/.test(previewText));
+
+// An entry that is inherited but keyed is scanned, not switched on - the thing that is
+// confusing about a tree that looks right while the prompt stays empty.
+check('it marks which entries are actually in the prompt',
+    previewText.includes('●') && previewText.includes('○'), 'no on/off marks');
+check('it shows a keyed entry\'s keys, so it is clear what would wake it',
+    previewText.includes('keyed: s'), previewText.split('\n').find((l) => l.includes('keyed')) ?? '');
+check('and explains that a keyed entry waits for its key',
+    previewText.includes('only enters the prompt once one of its keys appears'),
+    previewText.slice(-400));
+check('it counts how many are live',
+    /\d+ of them are in the prompt right now/.test(previewText));
 
 // ---------- T28: the master switch ----------
 S().enabled = false;

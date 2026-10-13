@@ -238,8 +238,11 @@ generation, in three parts:
    offered each, the card text injected, and what was skipped because something else already
    scans it.
 2. **Every world info entry that would be weighed**, highest priority first, with its insertion
-   order, where it lands, whether it is always on or keyed, and which book it came from.
-   Entries this extension added are marked, so inherited lore is easy to pick out of the pile.
+   order, where it lands, and which book it came from. Each is marked ● if it is in the prompt
+   right now or ○ if it is not, and ▸ if the hierarchy is what brought it in. A keyed entry
+   also lists its keys — inheritance gets an entry *scanned*, not switched on, and a keyed one
+   still waits for one of its keys to appear in the chat. The preview says so when any are
+   waiting, which is the usual reason a tree looks right while the prompt stays empty.
 3. **The prompt those entries would build** — the text SillyTavern would actually place before
    and after the character definitions, in the author's note, and inside the chat at depth.
 
