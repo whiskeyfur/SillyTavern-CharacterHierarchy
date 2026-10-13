@@ -31,11 +31,13 @@
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 import {
     METADATA_KEY,
+    getSortedEntries,
     loadWorldInfo,
     newWorldInfoEntryTemplate,
     openWorldInfoEditor,
     selected_world_info,
     world_info,
+    world_info_position,
 } from '../../../world-info.js';
 import { getUserAvatars } from '../../../personas.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
@@ -2781,7 +2783,59 @@ async function installDrawer() {
 
 // ---------------------------------------------------------------- panel chrome
 
-/** Shows what the currently selected character would inherit. */
+/** Human names for world info's insertion positions. */
+const POSITION_LABELS = Object.freeze({
+    [world_info_position.before]: 'before char defs',
+    [world_info_position.after]: 'after char defs',
+    [world_info_position.ANTop]: 'AN top',
+    [world_info_position.ANBottom]: 'AN bottom',
+    [world_info_position.atDepth]: 'at depth',
+    [world_info_position.EMTop]: 'examples top',
+    [world_info_position.EMBottom]: 'examples bottom',
+    [world_info_position.outlet]: 'outlet',
+});
+
+/** @returns {string} A short label for what an entry is called. */
+function entryLabel(entry) {
+    const keys = Array.isArray(entry.key) ? entry.key.filter(Boolean) : [];
+    return entry.comment || keys.slice(0, 3).join(', ') || `uid ${entry.uid}`;
+}
+
+/**
+ * Asks SillyTavern to assemble the world info it would inject right now.
+ *
+ * This is the same dry run the app performs before a generation: timed effects are left alone
+ * and no event is emitted, so looking costs nothing.
+ *
+ * @param {object} context SillyTavern context.
+ * @returns {Promise<object|null>} The assembled prompt pieces, or null if it could not be run.
+ */
+async function assembleWorldInfo(context) {
+    try {
+        const includeNames = Boolean(context.powerUserSettings?.world_info_include_names);
+        const chatForWI = (context.chat ?? [])
+            .filter((message) => message && !message.is_system)
+            .map((message) => (includeNames ? `${message.name}: ${message.mes}` : message.mes))
+            .reverse();
+
+        const fields = context.getCharacterCardFields?.() ?? {};
+
+        return await context.getWorldInfoPrompt(chatForWI, Number(context.maxContext) || 4096, true, {
+            personaDescription: fields.persona ?? '',
+            characterDescription: fields.description ?? '',
+            characterPersonality: fields.personality ?? '',
+            characterDepthPrompt: fields.charDepthPrompt ?? '',
+            scenario: fields.scenario ?? '',
+            creatorNotes: fields.creatorNotes ?? '',
+            trigger: 'normal',
+        });
+    } catch (error) {
+        console.error(`${LOG} could not assemble the world info preview`, error);
+        return null;
+    }
+}
+
+/** Shows what the selected card inherits, and what the prompt would be built from. */
 async function showPreview() {
     const context = getContext();
     const lines = [];
@@ -2791,6 +2845,7 @@ async function showPreview() {
         : null;
     const result = await resolve(context, speakerOverride);
 
+    // ---- what the hierarchy contributes
     if (!result.speaker && !result.plan.size) {
         lines.push('No character is selected, so there is nothing to resolve.');
     } else {
@@ -2828,6 +2883,94 @@ async function showPreview() {
         }
 
         lines.push('', `Total entries added this turn: ${result.entries.length}`);
+    }
+
+    // The two sections below come from SillyTavern itself, which always works on the open
+    // character - it has no notion of a node being selected on a chart.
+    const openAvatar = context.characters?.[context.characterId]?.avatar;
+    if (speakerOverride && openAvatar && speakerOverride !== openAvatar) {
+        lines.push('', `Note: everything below is for ${displayName(charKey(openAvatar))}, who is open,`
+            + ` not ${displayName(selectedKey)}, who is selected.`);
+    }
+
+    // ---- every entry that would be considered, in the order they are weighed
+    const inherited = new Set(result.entries.map((entry) => `${entry.world}.${entry.uid}`));
+    let combined = [];
+    try {
+        combined = await getSortedEntries();
+    } catch (error) {
+        console.error(`${LOG} could not list the combined entries`, error);
+    }
+
+    lines.push('', '─'.repeat(72), '');
+    lines.push(`COMBINED WORLD INFO — ${combined.length} entries, highest priority first`);
+    lines.push('(order, where it lands, whether it is always on, and where it came from)', '');
+
+    for (const entry of combined) {
+        if (entry.disable) {
+            continue;
+        }
+        const mine = inherited.has(`${entry.world}.${entry.uid}`) ? '▸' : ' ';
+        const order = String(entry.order ?? 0).padStart(5);
+        const where = (POSITION_LABELS[entry.position] ?? `position ${entry.position}`)
+            + (entry.position === world_info_position.atDepth ? ` ${entry.depth}` : '');
+        const trigger = entry.constant ? 'always' : 'keyed';
+        lines.push(`${mine} ${order}  ${where.padEnd(18)} ${trigger.padEnd(6)} ${entry.world} — ${entryLabel(entry)}`);
+    }
+
+    lines.push('', '▸ marks an entry this extension added through the hierarchy.');
+
+    // ---- what SillyTavern would actually put in the prompt
+    const assembled = await assembleWorldInfo(context);
+
+    lines.push('', '─'.repeat(72), '');
+
+    if (!assembled) {
+        lines.push('PROMPT PREVIEW — unavailable; see the console for why.');
+    } else {
+        const depthEntries = assembled.worldInfoDepth ?? [];
+        const anBefore = assembled.anBefore ?? [];
+        const anAfter = assembled.anAfter ?? [];
+
+        lines.push('PROMPT PREVIEW — what a generation right now would be built from.');
+        lines.push('Only the world info is shown; the chat itself and the system prompt are not.', '');
+
+        lines.push('┌─ before character definitions ' + '─'.repeat(40));
+        lines.push(assembled.worldInfoBefore?.trimEnd() || '  (nothing)');
+        lines.push('');
+        lines.push('├─ character definitions ' + '─'.repeat(47));
+        lines.push(`  (${displayName(charKey(openAvatar ?? ''))}'s description, personality and scenario)`);
+        lines.push('');
+        lines.push('├─ after character definitions ' + '─'.repeat(41));
+        lines.push(assembled.worldInfoAfter?.trimEnd() || '  (nothing)');
+
+        if (anBefore.length || anAfter.length) {
+            lines.push('');
+            lines.push('├─ author\'s note ' + '─'.repeat(55));
+            for (const text of [...anBefore, ...anAfter]) {
+                lines.push(String(text).trimEnd());
+            }
+        }
+
+        lines.push('');
+        lines.push('├─ inside the chat, at depth ' + '─'.repeat(43));
+        if (!depthEntries.length) {
+            lines.push('  (nothing)');
+        }
+        for (const item of depthEntries) {
+            const texts = Array.isArray(item.entries) ? item.entries : [];
+            lines.push(`  depth ${item.depth}, role ${item.role}:`);
+            for (const text of texts) {
+                lines.push(`    ${String(text).replace(/\n/g, '\n    ').trimEnd()}`);
+            }
+        }
+
+        lines.push('└' + '─'.repeat(71));
+
+        const total = (assembled.worldInfoString ?? '').length
+            + depthEntries.reduce((sum, item) => sum
+                + (Array.isArray(item.entries) ? item.entries.join('').length : 0), 0);
+        lines.push('', `World info in the prompt: ${total} characters.`);
     }
 
     const content = el('div', {}, [

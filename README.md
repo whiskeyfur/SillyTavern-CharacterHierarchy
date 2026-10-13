@@ -231,9 +231,22 @@ settings are in the section below it, and are covered under [Card text](#card-te
 | Inject card text | on | Honour the per-card *inject card text* switch. |
 | Log inheritance decisions | off | Prints the books chosen, their distance, which card offered them, and what was skipped, on every scan. |
 
-The **magnifying glass** in the panel header shows all of that for the selected card without
-running a generation: the ancestor chain, the books pulled in and where each came from, the
-card text injected, and what was skipped because something else already scans it.
+The **magnifying glass** in the panel header explains the whole picture without running a
+generation, in three parts:
+
+1. **What the hierarchy contributed** — the ancestor chain, the books pulled in and which card
+   offered each, the card text injected, and what was skipped because something else already
+   scans it.
+2. **Every world info entry that would be weighed**, highest priority first, with its insertion
+   order, where it lands, whether it is always on or keyed, and which book it came from.
+   Entries this extension added are marked, so inherited lore is easy to pick out of the pile.
+3. **The prompt those entries would build** — the text SillyTavern would actually place before
+   and after the character definitions, in the author's note, and inside the chat at depth.
+
+The last two come from SillyTavern itself: the preview asks it to assemble the world info as a
+dry run, which is the same thing it does before every generation and leaves sticky and cooldown
+timers untouched. They describe the character that is open, which is not always the node
+selected on the chart — the preview says so when the two differ.
 
 The **export** and **import** buttons move a tree between installs as JSON. Nodes are keyed by
 type and id — `char:Seraphina.png`, `book:Eldoria`, `persona:user.png` — so an imported tree

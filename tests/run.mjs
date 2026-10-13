@@ -67,13 +67,13 @@ const CHARACTERS = [
 ];
 
 globalThis.__books = {
-    'Brant Book': { entries: { 0: { uid: 0, key: ['brant'], content: 'brant own', order: 100 } } },
-    'Vance Secrets': { entries: { 0: { uid: 0, key: ['vance'], content: 'vance 1', order: 100 }, 1: { uid: 1, key: ['debt'], content: 'vance 2', order: 90 } } },
-    'Aldia Lore': { entries: { 0: { uid: 0, key: ['aldia'], content: 'aldia 1', order: 100 } } },
-    'Mira Book': { entries: { 0: { uid: 0, key: ['mira'], content: 'mira own', order: 100 } } },
-    'Global Book': { entries: { 0: { uid: 0, key: ['g'], content: 'global', order: 100 } } },
-    'Shared Book': { entries: { 0: { uid: 0, key: ['s'], content: 'shared', order: 100 } } },
-    'Node Extra': { entries: { 0: { uid: 0, key: ['x'], content: 'node extra', order: 100 } } },
+    'Brant Book': { entries: { 0: { uid: 0, key: ['brant'], content: 'brant own', order: 100, position: 0 } } },
+    'Vance Secrets': { entries: { 0: { uid: 0, key: ['vance'], content: 'vance 1', order: 100, position: 0 }, 1: { uid: 1, key: ['debt'], content: 'vance 2', order: 90, position: 0 } } },
+    'Aldia Lore': { entries: { 0: { uid: 0, key: ['aldia'], content: 'aldia 1', order: 100, position: 0 } } },
+    'Mira Book': { entries: { 0: { uid: 0, key: ['mira'], content: 'mira own', order: 100, position: 0 } } },
+    'Global Book': { entries: { 0: { uid: 0, key: ['g'], content: 'global', order: 100, position: 0 } } },
+    'Shared Book': { entries: { 0: { uid: 0, key: ['s'], content: 'shared', order: 100, position: 0 } } },
+    'Node Extra': { entries: { 0: { uid: 0, key: ['x'], content: 'node extra', order: 100, position: 0 } } },
 };
 
 const handlers = new Map();
@@ -108,6 +108,18 @@ globalThis.__ctx = {
     unshallowCharacter: async (id) => { CHARACTERS[Number(id)].shallow = false; CHARACTERS[Number(id)].description = 'unshallowed text'; },
     getThumbnailUrl: (type, file) => `/thumbnail?type=${type}&file=${file}`,
     getWorldInfoNames: () => Object.keys(globalThis.__books),
+    getCharacterCardFields: () => ({ persona: 'P', description: 'D', personality: '', scenario: '', creatorNotes: '' }),
+    getWorldInfoPrompt: async (chatForWI, maxContext, isDryRun) => {
+        globalThis.__wiPrompt = { chatForWI, maxContext, isDryRun };
+        return {
+            worldInfoString: 'BEFORE-TEXT\nAFTER-TEXT',
+            worldInfoBefore: 'BEFORE-TEXT',
+            worldInfoAfter: 'AFTER-TEXT',
+            worldInfoExamples: [],
+            worldInfoDepth: [{ depth: 4, role: 0, entries: ['DEPTH-TEXT'] }],
+            anBefore: [], anAfter: [], outletEntries: {},
+        };
+    },
     SlashCommandParser: { addCommandObject: (c) => commands.set(c.name, c) },
     SlashCommand: { fromProps: (p) => p },
     SlashCommandNamedArgument: { fromProps: (p) => p },
@@ -146,6 +158,12 @@ const node = (parent, extra = {}) => ({
 });
 
 const idxOf = (avatar) => String(CHARACTERS.findIndex((c) => c.avatar === avatar));
+
+/** Clicks the preview button and lets its async work finish. */
+async function showPreviewFromHeader() {
+    document.getElementById('ch_preview').dispatchEvent(new dom.window.Event('click'));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+}
 
 /** The extension redraws on this event, so it is the public way to force a repaint. */
 const redraw = () => eventSource.emit(eventTypes.CHARACTER_PAGE_LOADED);
@@ -968,6 +986,37 @@ check('export captures the typed tree',
     exported.nodes[K('Brant.png')].parent === K('Vance.png')
     && exported.nodes[K('Vance.png')].books[0] === 'Shared Book',
     globalThis.__downloaded.content);
+
+// ---------- the preview shows the combined entries and the assembled prompt ----------
+setTree({ 'Aldia.png': node(null, { books: ['Shared Book'] }), 'Brant.png': node('Aldia.png') });
+await redraw();
+globalThis.__ctx.characterId = idxOf('Brant.png');
+clickCard(nodeFor(chart, K('Brant.png')));
+globalThis.__wiPrompt = null;
+globalThis.__lastPopup = null;
+await showPreviewFromHeader();
+
+const previewText = globalThis.__lastPopup?.querySelector('.ch-preview')?.textContent ?? '';
+check('the preview still explains the inheritance',
+    previewText.includes('Lorebooks pulled in:') && previewText.includes('Shared Book'));
+check('it lists the combined entries by priority',
+    previewText.includes('COMBINED WORLD INFO'), previewText.slice(0, 120));
+check('and marks the ones the hierarchy added', previewText.includes('▸'));
+check('it shows where each entry lands', previewText.includes('before char defs'));
+check('it asks SillyTavern to assemble the prompt as a dry run',
+    globalThis.__wiPrompt?.isDryRun === true, JSON.stringify(globalThis.__wiPrompt?.isDryRun));
+check('and passes the chat newest-first, as a generation would',
+    Array.isArray(globalThis.__wiPrompt?.chatForWI));
+// The section headers are the landmarks; "character definitions" alone also matches the
+// "before character definitions" header above it.
+check('it shows the assembled text in prompt order',
+    previewText.indexOf('BEFORE-TEXT') < previewText.indexOf('├─ character definitions')
+    && previewText.indexOf('├─ character definitions') < previewText.indexOf('AFTER-TEXT'),
+    'before/defs/after out of order');
+check('including what lands inside the chat at depth',
+    previewText.includes('DEPTH-TEXT') && previewText.includes('depth 4'));
+check('and says how much of the prompt it accounts for',
+    /World info in the prompt: \d+ characters/.test(previewText));
 
 // ---------- T28: the master switch ----------
 S().enabled = false;

@@ -18,3 +18,10 @@ export function setGlobalBooks(list) { selected_world_info = list; }
 export function openWorldInfoEditor(worldName) {
     globalThis.__worldInfoOpened = worldName;
 }
+
+/** Stand-in for the real sorted-entry assembly: runs the extension's listener, like ST does. */
+export async function getSortedEntries() {
+    const payload = { globalLore: [], characterLore: [], chatLore: [], personaLore: [] };
+    await globalThis.__ctx.eventSource.emit('worldinfo_entries_loaded', payload);
+    return [...payload.globalLore, ...payload.characterLore].sort((a, b) => b.order - a.order);
+}
