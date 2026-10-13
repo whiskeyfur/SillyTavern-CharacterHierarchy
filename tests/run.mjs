@@ -9,7 +9,7 @@
  *   npm install && npm test
  */
 import { JSDOM } from 'jsdom';
-import { cpSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
@@ -438,6 +438,15 @@ const nativeDrag = new dom.window.Event('dragstart', { bubbles: true, cancelable
 listRow('Brant.png').querySelector('img').dispatchEvent(nativeDrag);
 check('a native image drag out of a list row is suppressed', nativeDrag.defaultPrevented);
 check('rows are not natively draggable', listRow('Brant.png').draggable === false);
+
+// Pressing on a row's text must not start a text selection: the browser takes the pointer
+// over for it and cancels the drag. jsdom has no selection model, so this pins the marker
+// attribute and the stylesheet rule that suppresses it to each other.
+const wiredMarker = listRow('Brant.png').getAttribute('data-ch-drag-wired');
+const stylesheet = readFileSync(path.join(EXT_SRC, 'style.css'), 'utf-8');
+check('wired rows carry the marker the stylesheet keys off', wiredMarker === 'true', String(wiredMarker));
+check('the stylesheet stops text selection on wired rows',
+    /\.character_select\[data-ch-drag-wired\][^}]*user-select:\s*none/s.test(stylesheet));
 
 // ---------- T16: dragging a character out of the list ----------
 dragTo(listRow('Aldia.png'), chart);

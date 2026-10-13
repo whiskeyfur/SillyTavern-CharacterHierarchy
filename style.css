@@ -273,6 +273,17 @@
 }
 
 /*
+ * Rows wired as drag sources. Without this, pressing on the name or the description starts a
+ * text selection, the browser takes the pointer over for it and fires pointercancel, and the
+ * drag dies before it begins — so only the avatar was draggable. SillyTavern does the same on
+ * its own draggable rows.
+ */
+.character_select[data-ch-drag-wired] {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/*
  * Rows in SillyTavern's own character list that are already on the chart. Dimmed rather than
  * disabled: dragging one again just re-parents it.
  */
