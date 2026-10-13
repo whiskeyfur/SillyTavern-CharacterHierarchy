@@ -28,7 +28,7 @@ globalThis.__templateDir = EXT_SRC;
 
 // ---------- DOM ----------
 const dom = new JSDOM(`<!doctype html><html><body>
-    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div><div id="rightNavHolder" class="drawer"><div class="drawer-toggle"><div id="rightNavDrawerIcon" class="drawer-icon closedIcon"></div></div><nav id="right-nav-panel" class="drawer-content closedDrawer"></nav></div><div id="persona-management-button" class="drawer"><div class="drawer-toggle"></div><div class="drawer-content closedDrawer"></div></div></div><div id="extensions_settings2"></div><div id="rm_print_characters_block"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
+    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div><div id="rightNavHolder" class="drawer"><div class="drawer-toggle"><div id="rightNavDrawerIcon" class="drawer-icon closedIcon"></div></div><nav id="right-nav-panel" class="drawer-content closedDrawer"></nav><input type="checkbox" id="rm_button_panel_pin"></div><div id="persona-management-button" class="drawer"><div class="drawer-toggle"></div><div class="drawer-content closedDrawer"></div></div></div><div id="extensions_settings2"></div><div id="rm_print_characters_block"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
     <div id="avatar_controls">
         <div class="form_create_bottom_buttons_block">
             <div id="favorite_button"></div>
@@ -854,6 +854,33 @@ await setDrawer(false);
 await releaseTick();
 check('closing the chart leaves a list the user opened', listOpen(),
     'the extension shut a list it did not open');
+
+// Throwing the lock while the chart is open is a newer decision than our hold.
+const listLock = document.getElementById('rm_button_panel_pin');
+await setDrawer(true);
+check('the list came up for the lock check', listOpen());
+
+// what SillyTavern's lock handler does
+listLock.checked = true;
+listPanel.classList.add('pinnedOpen');
+listIcon.classList.add('drawerPinnedOpen');
+
+await setDrawer(false);
+await releaseTick();
+check('locking the list while the chart is open keeps it open afterwards', listOpen(),
+    'the extension closed a list the user had locked');
+check('and leaves the lock in place',
+    listPanel.classList.contains('pinnedOpen') && listIcon.classList.contains('drawerPinnedOpen'));
+
+// unlocking puts things back the way SillyTavern would
+listLock.checked = false;
+listPanel.classList.remove('pinnedOpen');
+listIcon.classList.remove('drawerPinnedOpen');
+userTogglesList();
+check('the list can be closed again once unlocked', !listOpen());
+
+// Leave it open again: the checks below start from a list the user has up.
+userTogglesList();
 
 // A pin the user set must survive too.
 listPanel.classList.add('pinnedOpen');

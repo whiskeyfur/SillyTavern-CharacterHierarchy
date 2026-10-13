@@ -1007,6 +1007,7 @@ const CHARACTER_PANEL = Object.freeze({
     toggle: '#rightNavHolder .drawer-toggle',
     content: '#right-nav-panel',
     icon: '#rightNavDrawerIcon',
+    lock: '#rm_button_panel_pin',
 });
 
 /** The node whose settings the panel under the chart is showing. */
@@ -2329,6 +2330,12 @@ async function holdCharacterListOpen() {
     listHold = { opened, pinnedContent, pinnedIcon };
 }
 
+/** @returns {boolean} True when the user has locked the character list open. */
+function isCharacterListLocked() {
+    const lock = document.querySelector(CHARACTER_PANEL.lock);
+    return lock instanceof HTMLInputElement && lock.checked;
+}
+
 /** Undoes exactly what holdCharacterListOpen() did, and nothing the user did themselves. */
 async function releaseCharacterList() {
     if (!listHold) {
@@ -2337,6 +2344,12 @@ async function releaseCharacterList() {
 
     const hold = listHold;
     listHold = null;
+
+    // The hold was recorded when the panel opened. If the user has thrown the lock since,
+    // that is a newer decision than ours, so leave the panel exactly as they set it.
+    if (isCharacterListLocked()) {
+        return;
+    }
 
     if (hold.pinnedContent) {
         document.querySelector(CHARACTER_PANEL.content)?.classList.remove('pinnedOpen');
