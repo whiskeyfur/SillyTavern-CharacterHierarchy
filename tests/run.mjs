@@ -544,6 +544,17 @@ check('the menu names the node',
 check('it sits on the body, clear of the chart pane\'s scrolling',
     menu.parentElement === document.body);
 
+// Living on the body means SillyTavern's "close unpinned drawers on an outside mousedown"
+// handler would otherwise shut the very panel the menu belongs to.
+let htmlSawPress = 0;
+const countPress = () => { htmlSawPress += 1; };
+document.documentElement.addEventListener('mousedown', countPress);
+menu.querySelector('.ch-context-item').dispatchEvent(
+    new dom.window.MouseEvent('mousedown', { bubbles: true }));
+check('a press inside the menu does not escape to the page',
+    htmlSawPress === 0, String(htmlSawPress));
+document.documentElement.removeEventListener('mousedown', countPress);
+
 const menuLabels = [...menu.querySelectorAll('.ch-context-item span')].map((e) => e.textContent);
 check('a nested node is offered a detach',
     menuLabels.includes('Detach from parent'), menuLabels.join(' | '));

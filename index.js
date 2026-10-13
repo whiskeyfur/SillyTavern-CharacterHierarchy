@@ -1308,6 +1308,13 @@ function showNodeMenu(key, x, y) {
     menu.append(item('fa-trash-can', 'Take off the chart',
         () => detachFromChart(key), 'ch-context-danger'));
 
+    // SillyTavern closes every unpinned drawer on a mousedown that did not land inside an open
+    // one, and this menu deliberately sits on the body so the chart pane cannot clip it. Keep
+    // its presses to itself, or using the menu would shut the panel it belongs to.
+    for (const type of ['mousedown', 'touchstart']) {
+        menu.addEventListener(type, (event) => event.stopPropagation());
+    }
+
     // On the body, so the chart pane's own scrolling cannot clip it.
     document.body.append(menu);
     menu.style.left = `${x}px`;
