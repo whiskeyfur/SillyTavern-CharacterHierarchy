@@ -24,10 +24,10 @@ Brant's own book. Neither card needs the other's lorebooks attached by hand, and
 to *Aldian History* reaches every character in the kingdom at once.
 
 ![The chart, with two trees side by side. Earth is the root of one, with North America and
-South America beneath it, USA under North America, and Mary, Paul and Peter on the bottom row.
-A persona called Whiskey is selected, with its actions showing underneath. The second tree is
-rooted on a Warhammer 40,000 lorebook, drawn as a book icon, with the character Adrastor nested
-under it.](media/panel.png)
+South America beneath it, USA and a persona called Whiskey under North America, and Mary, Paul
+and Peter on the bottom row. The second tree is rooted on a Warhammer 40,000 lorebook, drawn as
+a book icon, with the character Adrastor nested under it; Adrastor is selected, and the strip
+beneath it offers focus, detach and remove.](media/panel.png)
 
 ## What you get
 
