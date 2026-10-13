@@ -1661,6 +1661,7 @@ function renderChart() {
     }
 
     closeNodeMenu();
+    wireChartBackground(container);
 
     if (normalizeNodes()) {
         save();
@@ -1769,6 +1770,43 @@ function renderNodeActions(container, positions) {
     actions.append(remove);
 
     container.append(actions);
+}
+
+/** Where a press on empty chart space began, so a click can be told from a drag. */
+let backgroundPress = null;
+
+/**
+ * Clicking empty chart space clears the selection. Both the press and the release have to land
+ * on the background itself, so a drag that started on a node and ended on the backdrop is left
+ * alone — that one has just re-rooted the node and selected it.
+ *
+ * @param {HTMLElement} container The chart.
+ */
+function wireChartBackground(container) {
+    if (container.dataset.chBackgroundWired) {
+        return;
+    }
+    container.dataset.chBackgroundWired = 'true';
+
+    container.addEventListener('pointerdown', (event) => {
+        backgroundPress = event.target === container
+            ? { x: event.clientX ?? 0, y: event.clientY ?? 0 }
+            : null;
+    });
+
+    container.addEventListener('pointerup', (event) => {
+        const press = backgroundPress;
+        backgroundPress = null;
+
+        if (!press || event.target !== container || !selectedKey) {
+            return;
+        }
+
+        const travelled = Math.hypot((event.clientX ?? 0) - press.x, (event.clientY ?? 0) - press.y);
+        if (travelled < DRAG_THRESHOLD) {
+            selectNode(null);
+        }
+    });
 }
 
 /**

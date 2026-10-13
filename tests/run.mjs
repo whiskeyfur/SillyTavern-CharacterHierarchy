@@ -583,6 +583,27 @@ check('it sits directly below that node',
     `${strip?.style.top} vs ${pos('Brant.png')[1] + 108}`);
 check('a nested node can be detached from the strip', !!strip.querySelector('.fa-link-slash'));
 
+// ---------- clicking empty chart space clears the selection ----------
+chart.dispatchEvent(pev('pointerdown', 400, 400));
+chart.dispatchEvent(pev('pointerup', 400, 400));
+check('clicking the chart background deselects', !nodeFor(chart, K('Brant.png'))
+    ?.classList.contains('ch-node-selected'));
+check('the action strip goes with it', !chart.querySelector('.ch-node-actions'));
+check('the editor falls back to its hint', editor.textContent.includes('Click a node'));
+
+// a drag that ends on the backdrop has just re-rooted a node, so it must stay selected
+clickCard(nodeFor(chart, K('Brant.png')));
+dragTo(nodeFor(chart, K('Brant.png')), chart);
+check('a drag onto the background does not deselect',
+    nodeFor(chart, K('Brant.png'))?.classList.contains('ch-node-selected'));
+check('and it re-rooted the node', N('Brant.png').parent === null);
+
+// Put Brant back under Aldia; the checks below are about a nested node.
+N('Brant.png').parent = K('Aldia.png');
+await redraw();
+clickCard(nodeFor(chart, K('Brant.png')));
+strip = chart.querySelector('.ch-node-actions');
+
 strip.querySelector('.fa-link-slash').dispatchEvent(new dom.window.Event('click'));
 check('detaching makes it a root', N('Brant.png').parent === null);
 
