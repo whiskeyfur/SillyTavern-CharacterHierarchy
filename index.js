@@ -128,6 +128,9 @@ const DEFAULT_NODE = Object.freeze({
     role: ROLE.ACTOR,
     books: [],
     includeCardText: false,
+    // Remembered while the thing exists, so a node whose target is gone still has a name to
+    // show rather than a bare avatar id, which for a persona is a meaningless number.
+    label: '',
 });
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -150,6 +153,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     orderPenaltyPerLevel: 0,
     listFilterState: DEFAULT_FILTER_STATE,
     focusLineage: false,
+    zoom: 1,
     debug: false,
 });
 
@@ -224,6 +228,9 @@ function ensureNode(key) {
         node.books = [];
     }
     node.includeCardText = Boolean(node.includeCardText);
+    if (typeof node.label !== 'string') {
+        node.label = '';
+    }
     return node;
 }
 
@@ -380,6 +387,15 @@ function normalizeNodes() {
         }
     }
 
+    // Keep each node's remembered name current, so it survives the thing being deleted.
+    for (const key of Object.keys(store.nodes)) {
+        const live = liveName(key);
+        if (live && store.nodes[key].label !== live) {
+            store.nodes[key].label = live;
+            changed = true;
+        }
+    }
+
     // Break loops by detaching the node that closes them.
     for (const avatar of Object.keys(store.nodes)) {
         const seen = new Set([avatar]);
@@ -461,19 +477,27 @@ function indexByAvatar() {
  * @param {Map<string, number>} [indexes] A prebuilt avatar index, for callers in a loop.
  * @returns {string} A display name, falling back to the id for things no longer installed.
  */
-function displayName(key, indexes = indexByAvatar()) {
+function liveName(key, indexes = indexByAvatar()) {
     const { type, id } = parseKey(key);
 
     switch (type) {
         case NODE_TYPES.BOOK:
+            // A lorebook's id is its name, so it reads properly even once the book is gone.
             return id;
         case NODE_TYPES.PERSONA:
-            return personaName(id) || id;
-        default: {
-            const character = getContext().characters?.[indexes.get(id)];
-            return character?.name || getCharaFilename(null, { manualAvatarKey: id }) || id;
-        }
+            return personaName(id);
+        default:
+            return getContext().characters?.[indexes.get(id)]?.name ?? '';
     }
+}
+
+function displayName(key, indexes = indexByAvatar()) {
+    const { id } = parseKey(key);
+
+    return liveName(key, indexes)
+        || getNode(key)?.label
+        || getCharaFilename(null, { manualAvatarKey: id })
+        || id;
 }
 
 /** @returns {Record<string, string>} Persona avatar id to name. */
@@ -1001,6 +1025,10 @@ const ROOT_GAP = 34;
 const STACK_INDENT = Math.round(NODE_WIDTH / 2) + 24;
 const STACK_GAP = 8;
 
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 2;
+const ZOOM_STEP = 1.1;
+
 /** Breathing room inside the chart. Pushed into CSS so the two cannot drift apart. */
 const CHART_PADDING = 14;
 
@@ -1062,7 +1090,7 @@ function field(text, control, hint) {
  * leaf claims the next column, and every parent is centred over the children it owns. Sibling
  * subtrees therefore occupy disjoint column ranges and cannot overlap.
  *
- * @returns {{positions: Map<string, {x: number, y: number, depth: number}>, width: number, height: number}}
+ * @returns {{positions: Map<string, {x: number, y: number, depth: number, stacked?: boolean}>, width: number, height: number}}
  */
 /**
  * The nodes the chart should draw.
@@ -1098,7 +1126,7 @@ function layoutForest() {
     const { keys: visible } = focusedKeys();
     const byName = (a, b) => displayName(a, indexes).localeCompare(displayName(b, indexes));
 
-    /** @type {Map<string, {x: number, y: number, depth: number}>} */
+    /** @type {Map<string, {x: number, y: number, depth: number, stacked?: boolean}>} */
     const positions = new Map();
     const seen = new Set();
     let column = 0;
@@ -1262,6 +1290,9 @@ function buildCardBox(key, indexes) {
                 className: 'ch-node-cardtext fa-solid fa-align-left',
                 title: 'This node\'s own text is injected as a world info entry.',
             }));
+        }
+        if (missing) {
+            meta.append(el('span', { className: 'ch-node-gone', textContent: 'missing' }));
         }
         box.append(meta);
     }
@@ -1612,6 +1643,7 @@ function onDragEnd(event) {
 
     selectedKey = state.key;
     renderAll();
+    scrollNodeIntoView(state.key);
 }
 
 /**
@@ -1741,10 +1773,17 @@ function renderChart() {
     container.dataset.chDrop = 'root';
     container.style.setProperty('--ch-pad', `${CHART_PADDING}px`);
 
-    // The chart is a border box, so the padding has to be added back on to the laid-out size;
-    // otherwise min-width/min-height of 100% would always overflow the pane by the padding.
-    container.style.width = positions.size ? `${width + CHART_PADDING * 2}px` : '';
-    container.style.height = positions.size ? `${height + CHART_PADDING * 2}px` : '';
+    // The padding is added back on to the laid-out size; otherwise min-width/min-height of
+    // 100% would always overflow the pane by it.
+    const zoom = getZoom();
+    const laidOutWidth = width + CHART_PADDING * 2;
+    const laidOutHeight = height + CHART_PADDING * 2;
+
+    // The chart is the canvas, sized to the tree *as drawn*, so the pane's scrollbars match
+    // what is on screen. The surface inside it carries the scale, since a transform leaves the
+    // layout box alone and would otherwise scroll as though nothing had been zoomed.
+    container.style.width = positions.size ? `${laidOutWidth * zoom}px` : '';
+    container.style.height = positions.size ? `${laidOutHeight * zoom}px` : '';
 
     const { anchor } = focusedKeys();
     const hidden = Object.keys(settings().nodes).length - positions.size;
@@ -1756,6 +1795,12 @@ function renderChart() {
         }));
         return;
     }
+
+    const surface = el('div', { className: 'ch-chart-surface' });
+    surface.style.width = `${laidOutWidth}px`;
+    surface.style.height = `${laidOutHeight}px`;
+    surface.style.transform = `scale(${zoom})`;
+    container.append(surface);
 
     // Connectors go in first so the boxes sit on top of them.
     const svg = document.createElementNS(SVG_NS, 'svg');
@@ -1788,19 +1833,19 @@ function renderChart() {
         svg.append(path);
     }
 
-    container.append(svg);
+    surface.append(svg);
 
     for (const [key, position] of positions) {
         const box = buildCardBox(key, indexes);
         box.style.left = `${position.x}px`;
         box.style.top = `${position.y}px`;
-        container.append(box);
+        surface.append(box);
     }
 
-    renderNodeActions(container, positions);
+    renderNodeActions(surface, positions);
 
     if (anchor && hidden > 0) {
-        container.append(el('div', {
+        surface.append(el('div', {
             className: 'ch-focus-note',
             textContent: `Showing only ${displayName(anchor)}'s line — ${hidden} other `
                 + `${hidden === 1 ? 'node is' : 'nodes are'} hidden.`,
@@ -1865,6 +1910,70 @@ let backgroundPress = null;
 
 /** A pan in progress on the chart's backdrop, or null. */
 let chartPan = null;
+
+/** @returns {number} The stored zoom, clamped to what the chart will actually draw at. */
+function getZoom() {
+    const zoom = Number(settings().zoom);
+    return Number.isFinite(zoom) ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) : 1;
+}
+
+/**
+ * Zooms the chart about a point, so whatever is under the cursor stays under it.
+ * @param {number} next The new zoom.
+ * @param {number} [clientX] Viewport x to keep fixed.
+ * @param {number} [clientY] Viewport y to keep fixed.
+ */
+function setZoom(next, clientX, clientY) {
+    const pane = document.querySelector('.ch-chart-pane');
+    const before = getZoom();
+    const after = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+
+    if (!pane || after === before) {
+        return;
+    }
+
+    // Where the cursor is over the chart's own coordinates, before the scale changes.
+    const box = pane.getBoundingClientRect();
+    const anchorX = (clientX ?? box.left + box.width / 2) - box.left + pane.scrollLeft;
+    const anchorY = (clientY ?? box.top + box.height / 2) - box.top + pane.scrollTop;
+
+    settings().zoom = after;
+    getContext().saveSettingsDebounced();
+    renderChart();
+
+    const ratio = after / before;
+    pane.scrollLeft += anchorX * ratio - anchorX;
+    pane.scrollTop += anchorY * ratio - anchorY;
+    syncZoomButton();
+}
+
+/** Shows the current zoom on the header button, so it is obvious when it is not 100%. */
+function syncZoomButton() {
+    const button = document.getElementById('ch_zoom_reset');
+    if (!button) {
+        return;
+    }
+    const zoom = getZoom();
+    button.classList.toggle('ch-toggle-on', zoom !== 1);
+    button.title = `Zoom: ${Math.round(zoom * 100)}% — click to reset. Scroll the chart to zoom.`;
+}
+
+/**
+ * Scrolls a node into view, for when it has just been added or picked out and is off screen.
+ * @param {string} key The node key.
+ */
+function scrollNodeIntoView(key) {
+    // Matched by hand rather than by selector: a node key carries a colon and a file name,
+    // neither of which belongs in one unescaped.
+    const node = [...document.querySelectorAll('#ch_chart .ch-node')]
+        .find((box) => box instanceof HTMLElement && box.dataset.key === key);
+
+    try {
+        node?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } catch {
+        // Purely a convenience; not worth failing a render over.
+    }
+}
 
 /**
  * Drags the chart under the cursor. The pane is what actually scrolls, so panning is just
@@ -1976,8 +2085,11 @@ function wireChartBackground(container) {
     }
     container.dataset.chBackgroundWired = 'true';
 
+    const isBackdrop = (target) => target === container
+        || (target instanceof Element && target.classList.contains('ch-chart-surface'));
+
     container.addEventListener('pointerdown', (event) => {
-        if (event.target !== container || (event.button !== undefined && event.button !== 0)) {
+        if (!isBackdrop(event.target) || (event.button !== undefined && event.button !== 0)) {
             backgroundPress = null;
             return;
         }
@@ -2003,11 +2115,17 @@ function wireChartBackground(container) {
         document.addEventListener('pointercancel', onChartPanEnd);
     });
 
+    container.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        const direction = (event.deltaY ?? 0) > 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
+        setZoom(getZoom() * direction, event.clientX, event.clientY);
+    }, { passive: false });
+
     container.addEventListener('pointerup', (event) => {
         const press = backgroundPress;
         backgroundPress = null;
 
-        if (!press || event.target !== container || !selectedKey) {
+        if (!press || !isBackdrop(event.target) || !selectedKey) {
             return;
         }
 
@@ -2321,6 +2439,7 @@ async function addNodeOfType(type) {
     save();
     selectedKey = key;
     renderAll();
+    scrollNodeIntoView(key);
 }
 
 // ---------------------------------------------------------------- character list filter
@@ -2884,6 +3003,9 @@ function bindSettingsUi() {
     }
 
     document.getElementById('ch_open_drawer')?.addEventListener('click', () => openDrawer());
+    syncZoomButton();
+    document.getElementById('ch_zoom_reset')?.addEventListener('click', () => setZoom(1));
+
     syncFocusButton();
     document.getElementById('ch_focus')?.addEventListener('click', () => {
         settings().focusLineage = !settings().focusLineage;

@@ -524,6 +524,65 @@ check('the chart box includes its own padding, so a small tree never scrolls',
 check('the padding is published to CSS from the one place it is defined',
     chart.style.getPropertyValue('--ch-pad') === '14px');
 
+// ---------- zoom ----------
+const surface = () => chart.querySelector('.ch-chart-surface');
+check('the tree is drawn on a surface inside the chart', !!surface());
+check('which starts unscaled', surface().style.transform === 'scale(1)',
+    surface().style.transform);
+check('and the chart is sized to the tree as drawn',
+    chart.style.width === '226px', chart.style.width);
+
+// jsdom has no layout, so the pane's scroll offsets and box are stubbed
+const zoomPane = chart.parentElement;
+Object.defineProperty(zoomPane, 'scrollLeft', { value: 0, writable: true, configurable: true });
+Object.defineProperty(zoomPane, 'scrollTop', { value: 0, writable: true, configurable: true });
+zoomPane.getBoundingClientRect = () => ({ width: 400, height: 300, top: 0, left: 0, right: 400, bottom: 300, x: 0, y: 0 });
+
+chart.dispatchEvent(new dom.window.WheelEvent('wheel', { deltaY: -100, clientX: 200, clientY: 150, bubbles: true, cancelable: true }));
+check('scrolling up on the chart zooms in', S().zoom > 1, String(S().zoom));
+check('the surface takes the scale', surface().style.transform === `scale(${S().zoom})`,
+    surface().style.transform);
+check('and the chart grows with it, so the scrollbars match',
+    Math.round(parseFloat(chart.style.width)) === Math.round(226 * S().zoom),
+    `${chart.style.width} vs ${226 * S().zoom}`);
+check('zooming about the pointer moves the scroll to keep it still',
+    zoomPane.scrollLeft > 0 && zoomPane.scrollTop > 0,
+    `${zoomPane.scrollLeft}, ${zoomPane.scrollTop}`);
+
+const zoomedIn = S().zoom;
+chart.dispatchEvent(new dom.window.WheelEvent('wheel', { deltaY: 100, clientX: 200, clientY: 150, bubbles: true, cancelable: true }));
+check('scrolling down zooms back out', S().zoom < zoomedIn, String(S().zoom));
+
+for (let i = 0; i < 40; i++) {
+    chart.dispatchEvent(new dom.window.WheelEvent('wheel', { deltaY: 100, clientX: 200, clientY: 150, bubbles: true, cancelable: true }));
+}
+check('it cannot be zoomed away to nothing', S().zoom === 0.3, String(S().zoom));
+check('the header button says it is not at 100%',
+    document.getElementById('ch_zoom_reset').classList.contains('ch-toggle-on'));
+
+document.getElementById('ch_zoom_reset').dispatchEvent(new dom.window.Event('click'));
+check('the header button resets it', S().zoom === 1, String(S().zoom));
+check('and stops flagging itself',
+    !document.getElementById('ch_zoom_reset').classList.contains('ch-toggle-on'));
+
+// ---------- a node remembers its name for when the thing is deleted ----------
+setTree({ 'Brant.png': node(null) });
+await redraw();
+check('a node remembers what it is called', N('Brant.png').label === 'Sir Brant',
+    N('Brant.png').label);
+
+const parked = CHARACTERS.splice(idxOf('Brant.png'), 1)[0];   // as if the card were deleted
+await redraw();
+const orphan = nodeFor(chart, K('Brant.png'));
+check('a node whose card is gone still shows its name, not a bare id',
+    orphan.querySelector('.ch-node-name').textContent === 'Sir Brant',
+    orphan.querySelector('.ch-node-name').textContent);
+check('and says plainly that it is missing',
+    !!orphan.querySelector('.ch-node-gone') && orphan.classList.contains('ch-node-missing'));
+
+CHARACTERS.splice(0, 0, parked);   // put the cast back
+await redraw();
+
 // A rank with anything below it still spreads out, so the tree shape stays readable.
 setTree({
     'Aldia.png': node(null),

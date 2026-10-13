@@ -107,8 +107,18 @@
     position: relative;
     min-width: 100%;
     min-height: 100%;
-    padding: var(--ch-pad);
     box-sizing: border-box;
+}
+
+/*
+ * Carries the zoom. A transform leaves the layout box alone, so the chart above it is sized to
+ * the scaled result instead and the pane's scrollbars match what is actually on screen.
+ */
+.ch-chart-surface {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
 }
 
 /* The backdrop is draggable to pan the chart. */
@@ -162,7 +172,7 @@
 }
 
 /* Inside the chart the boxes are positioned by the layout; in the tray they just stack. */
-.ch-chart > .ch-node {
+.ch-chart-surface > .ch-node {
     position: absolute;
     margin: var(--ch-pad) 0 0 var(--ch-pad);
 }
@@ -182,6 +192,12 @@
 
 .ch-node-missing {
     opacity: 0.55;
+}
+
+.ch-node-gone {
+    color: var(--crimson70a, crimson);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .ch-node-dragging {

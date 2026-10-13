@@ -93,6 +93,10 @@ you close the chart again. (Not on a phone, where two panels side by side do not
 - **Double-click a node** to open the thing it stands for: a character's chat, a persona in the
   persona manager, or a lorebook in the world info editor.
 
+**Scroll the chart to zoom**, from 30% to 200%, about whatever is under the pointer; the
+magnifier in the panel header shows the current level and resets it. Dragging empty space pans,
+so the scroll wheel is free for zooming. A node you have just added is scrolled into view.
+
 A rank with nothing below it is stacked down the page rather than spread across it, indented
 under its parent — three characters under one country cost about 200px of width that way
 instead of 380px. Ranks that do have children below them still lay out across the page, so the
