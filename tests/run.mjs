@@ -40,7 +40,7 @@ const dom = new JSDOM(`<!doctype html><html><body>
 
 for (const key of ['window', 'document', 'Element', 'HTMLElement', 'HTMLInputElement',
     'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLOptionElement', 'Node',
-    'DocumentFragment', 'Event', 'CustomEvent', 'MouseEvent', 'File', 'MutationObserver']) {
+    'DocumentFragment', 'Event', 'CustomEvent', 'MouseEvent', 'KeyboardEvent', 'File', 'MutationObserver']) {
     globalThis[key] = key === 'window' ? dom.window : dom.window[key];
 }
 
@@ -516,9 +516,57 @@ dragTo(nodeFor(chart, K('Mira.png')), document.body);
 check('dragging a node off the chart takes it out of the tree', !N('Mira.png'));
 check('its row stops being dimmed', !listRow('Mira.png').classList.contains('ch-on-chart'));
 
+// ---------- right-click opens a menu rather than acting straight away ----------
+// SillyTavern binds its own contextmenu handlers further up; ours must not reach them.
+let ancestorSawContextMenu = 0;
+const countContextMenu = () => { ancestorSawContextMenu += 1; };
+document.addEventListener('contextmenu', countContextMenu);
+
+const ctxEvent = new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+nodeFor(chart, K('Vance.png')).dispatchEvent(ctxEvent);
+const menu = document.querySelector('.ch-context-menu');
+
+check('right-clicking a node opens a context menu', !!menu);
+check('the browser menu is suppressed', ctxEvent.defaultPrevented);
+check('it does not reach handlers further up the tree',
+    ancestorSawContextMenu === 0, String(ancestorSawContextMenu));
+document.removeEventListener('contextmenu', countContextMenu);
+check('right-clicking alone changes nothing', !!N('Vance.png'));
+check('the menu names the node',
+    menu.querySelector('.ch-context-title')?.textContent === 'House Vance');
+check('it sits on the body, clear of the chart pane\'s scrolling',
+    menu.parentElement === document.body);
+
+const menuLabels = [...menu.querySelectorAll('.ch-context-item span')].map((e) => e.textContent);
+check('a nested node is offered a detach',
+    menuLabels.includes('Detach from parent'), menuLabels.join(' | '));
+check('it offers edit, focus and removal',
+    menuLabels.includes('Edit') && menuLabels.includes('Focus on this line')
+    && menuLabels.includes('Take off the chart'), menuLabels.join(' | '));
+
+// dismissals
+document.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
+check('clicking away dismisses the menu', !document.querySelector('.ch-context-menu'));
+
 nodeFor(chart, K('Vance.png')).dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true }));
-check('right-clicking a node takes it off the chart', !N('Vance.png'));
+document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+check('Escape dismisses the menu', !document.querySelector('.ch-context-menu'));
+
+// a root has nothing to detach from
+nodeFor(chart, K('Aldia.png')).dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true }));
+check('a root is not offered a detach',
+    ![...document.querySelectorAll('.ch-context-item span')].map((e) => e.textContent)
+        .includes('Detach from parent'));
+document.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
+
+// and removal still works, from the menu
+nodeFor(chart, K('Vance.png')).dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true }));
+[...document.querySelectorAll('.ch-context-item')]
+    .find((i) => i.textContent.includes('Take off the chart'))
+    .dispatchEvent(new dom.window.Event('click'));
+check('the menu takes the node off the chart', !N('Vance.png'));
 check('its child is lifted to the grandparent', N('Brant.png').parent === K('Aldia.png'));
+check('the menu closes after acting', !document.querySelector('.ch-context-menu'));
 
 // ---------- T20: the action strip under the selected node ----------
 clickCard(nodeFor(chart, K('Brant.png')));

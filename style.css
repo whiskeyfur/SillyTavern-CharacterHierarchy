@@ -214,6 +214,53 @@
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
+/*
+ * The right-click menu for a node. On the body rather than inside the chart, so the chart
+ * pane's own scrolling cannot clip it.
+ */
+.ch-context-menu {
+    position: fixed;
+    z-index: 10001;
+    min-width: 170px;
+    padding: 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background-color: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.ch-context-title {
+    padding: 4px 8px 6px;
+    font-weight: bold;
+    font-size: calc(var(--mainFontSize) * 0.85);
+    opacity: 0.75;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ch-context-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 5px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: calc(var(--mainFontSize) * 0.9);
+}
+
+.ch-context-item:hover {
+    background-color: var(--white20a);
+}
+
+.ch-context-danger:hover {
+    color: var(--crimson70a, crimson);
+}
+
 /* A header toggle that is currently on. */
 .ch-panel-head .menu_button.ch-toggle-on {
     color: var(--SmartThemeQuoteColor);

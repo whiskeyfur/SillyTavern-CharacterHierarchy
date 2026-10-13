@@ -103,7 +103,8 @@ toggle is remembered between sessions, and nothing is deleted — it only change
 
 Three ways, whichever is nearest to hand:
 
-- **Right-click** the node.
+- **Right-click** the node and choose *Take off the chart*. The same menu offers *Edit*,
+  *Detach from parent* and *Focus on this line*.
 - **Click it**, then use the bin in the strip that appears under it, or in the settings panel.
 - **Drag it off the chart** and let go. The ghost turns red to say what will happen.
 

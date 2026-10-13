@@ -1216,15 +1216,105 @@ function buildCardBox(key, indexes) {
 
     attachDragHandlers(box, key);
 
-    // Right-click takes a node off the chart, as does dragging it away.
     box.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         // Keep it off SillyTavern's own context menu handlers further up the tree.
         event.stopPropagation();
-        detachFromChart(key);
+        showNodeMenu(key, event.clientX ?? 0, event.clientY ?? 0);
     });
 
     return box;
+}
+
+// ---------------------------------------------------------------- the node context menu
+
+/** The open context menu, or null. */
+let nodeMenu = null;
+
+function closeNodeMenu() {
+    nodeMenu?.remove();
+    nodeMenu = null;
+    document.removeEventListener('pointerdown', onNodeMenuDismiss, true);
+    document.removeEventListener('keydown', onNodeMenuKey, true);
+}
+
+function onNodeMenuDismiss(event) {
+    if (nodeMenu && event.target instanceof Node && !nodeMenu.contains(event.target)) {
+        closeNodeMenu();
+    }
+}
+
+function onNodeMenuKey(event) {
+    if (event.key === 'Escape') {
+        closeNodeMenu();
+    }
+}
+
+/** Keeps the focus toggle in the panel header in step with the setting. */
+function syncFocusButton() {
+    document.getElementById('ch_focus')?.classList.toggle('ch-toggle-on', Boolean(settings().focusLineage));
+}
+
+/**
+ * Opens the right-click menu for a node.
+ * @param {string} key The node key.
+ * @param {number} x Viewport x of the pointer.
+ * @param {number} y Viewport y of the pointer.
+ */
+function showNodeMenu(key, x, y) {
+    closeNodeMenu();
+
+    const focused = Boolean(settings().focusLineage);
+    const menu = el('div', { className: 'ch-context-menu' });
+
+    const item = (icon, label, action, extraClass = '') => {
+        const row = el('div', { className: `ch-context-item ${extraClass}`.trim() });
+        row.append(el('i', { className: `fa-solid fa-fw ${icon}` }), el('span', { textContent: label }));
+        row.addEventListener('click', () => {
+            closeNodeMenu();
+            action();
+        });
+        return row;
+    };
+
+    menu.append(el('div', { className: 'ch-context-title', textContent: displayName(key) }));
+    menu.append(item('fa-pen-to-square', 'Edit', () => selectNode(key)));
+
+    if (getParent(key)) {
+        menu.append(item('fa-link-slash', 'Detach from parent', () => {
+            setParent(key, null);
+            renderAll();
+        }));
+    }
+
+    menu.append(item('fa-crosshairs', focused ? 'Show the whole chart' : 'Focus on this line', () => {
+        settings().focusLineage = !focused;
+        getContext().saveSettingsDebounced();
+        syncFocusButton();
+        // Selecting re-anchors the focus on this node.
+        selectNode(key);
+    }));
+
+    menu.append(item('fa-trash-can', 'Take off the chart',
+        () => detachFromChart(key), 'ch-context-danger'));
+
+    // On the body, so the chart pane's own scrolling cannot clip it.
+    document.body.append(menu);
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+
+    // Flip it back inside the window if it would hang off an edge.
+    const rect = menu.getBoundingClientRect();
+    if (rect.width && rect.right > window.innerWidth) {
+        menu.style.left = `${Math.max(0, x - rect.width)}px`;
+    }
+    if (rect.height && rect.bottom > window.innerHeight) {
+        menu.style.top = `${Math.max(0, y - rect.height)}px`;
+    }
+
+    nodeMenu = menu;
+    document.addEventListener('pointerdown', onNodeMenuDismiss, true);
+    document.addEventListener('keydown', onNodeMenuKey, true);
 }
 
 /**
@@ -1562,6 +1652,8 @@ function renderChart() {
     if (!container) {
         return;
     }
+
+    closeNodeMenu();
 
     if (normalizeNodes()) {
         save();
@@ -2394,13 +2486,11 @@ function bindSettingsUi() {
     }
 
     document.getElementById('ch_open_drawer')?.addEventListener('click', () => openDrawer());
-    const focusButton = document.getElementById('ch_focus');
-    const paintFocus = () => focusButton?.classList.toggle('ch-toggle-on', Boolean(settings().focusLineage));
-    paintFocus();
-    focusButton?.addEventListener('click', () => {
+    syncFocusButton();
+    document.getElementById('ch_focus')?.addEventListener('click', () => {
         settings().focusLineage = !settings().focusLineage;
         getContext().saveSettingsDebounced();
-        paintFocus();
+        syncFocusButton();
         renderChart();
     });
 
