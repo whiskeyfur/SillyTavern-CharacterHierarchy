@@ -83,7 +83,10 @@ you close the chart again. (Not on a phone, where two panels side by side do not
 - **Drag a node onto another node** to nest it underneath.
 - **Drag it onto empty chart space** to make it the root of its own tree.
 - **Click a node** to open its settings under the chart, and a small strip of actions directly
-  beneath the node itself. Everything applies immediately.
+  beneath the node itself. Everything applies immediately. Clicking empty chart space clears
+  the selection again.
+- **Double-click a node** to open the thing it stands for: a character's chat, a persona in the
+  persona manager, or a lorebook in the world info editor.
 
 A drop that would nest a node inside its own descendants is refused — the target outlines in
 red instead of green, and nothing moves. Nodes show their portrait, name, role and how many
@@ -307,6 +310,7 @@ says why in the console:
 | `#rm_characters_block .rm_tag_filter` | Placing the filter button | Logs a warning; everything else still works |
 | `#rm_print_characters_block` and `.character_select[data-chid]` | Dragging characters onto the chart, and dimming the ones already there | Logs a warning; lorebooks and personas can still be added from the panel header |
 | `power_user.personas` and `persona_descriptions` | Putting personas on the chart | Personas simply do not appear as candidates |
+| `openWorldInfoEditor` and `getUserAvatars` | Double-clicking a lorebook or persona to open it | Build error at load |
 | `dragElement` from `RossAscends-mods.js` | Dragging and resizing the panel, and only when *Movable UI panels* is on | Logs a warning; the panel still works, just fixed in place |
 
 The world info side — the part that actually matters — depends only on the event and on

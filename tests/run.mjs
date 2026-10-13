@@ -28,7 +28,7 @@ globalThis.__templateDir = EXT_SRC;
 
 // ---------- DOM ----------
 const dom = new JSDOM(`<!doctype html><html><body>
-    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div><div id="rightNavHolder" class="drawer"><div class="drawer-toggle"><div id="rightNavDrawerIcon" class="drawer-icon closedIcon"></div></div><nav id="right-nav-panel" class="drawer-content closedDrawer"></nav></div></div><div id="extensions_settings2"></div><div id="rm_print_characters_block"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
+    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div><div id="rightNavHolder" class="drawer"><div class="drawer-toggle"><div id="rightNavDrawerIcon" class="drawer-icon closedIcon"></div></div><nav id="right-nav-panel" class="drawer-content closedDrawer"></nav></div><div id="persona-management-button" class="drawer"><div class="drawer-toggle"></div><div class="drawer-content closedDrawer"></div></div></div><div id="extensions_settings2"></div><div id="rm_print_characters_block"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
     <div id="avatar_controls">
         <div class="form_create_bottom_buttons_block">
             <div id="favorite_button"></div>
@@ -104,6 +104,7 @@ globalThis.__ctx = {
     eventSource,
     eventTypes,
     saveSettingsDebounced: () => {},
+    selectCharacterById: async (id) => { globalThis.__characterOpened = Number(id); },
     unshallowCharacter: async (id) => { CHARACTERS[Number(id)].shallow = false; CHARACTERS[Number(id)].description = 'unshallowed text'; },
     getThumbnailUrl: (type, file) => `/thumbnail?type=${type}&file=${file}`,
     getWorldInfoNames: () => Object.keys(globalThis.__books),
@@ -395,6 +396,12 @@ function clickCard(el) {
     el.dispatchEvent(pev('pointerup', 10, 10));
 }
 
+/**
+ * Lets the double-click window lapse. The suite clicks far faster than a person, so two
+ * unrelated clicks on the same node would otherwise read as a double click.
+ */
+const settleClick = () => new Promise((resolve) => setTimeout(resolve, 450));
+
 /** Drives the "add a lorebook/persona" picker, choosing a specific entry. */
 async function addViaPicker(buttonId, value) {
     globalThis.__onPopup = (content) => { content.querySelector('select').value = value; };
@@ -592,6 +599,7 @@ check('the action strip goes with it', !chart.querySelector('.ch-node-actions'))
 check('the editor falls back to its hint', editor.textContent.includes('Click a node'));
 
 // a drag that ends on the backdrop has just re-rooted a node, so it must stay selected
+await settleClick();
 clickCard(nodeFor(chart, K('Brant.png')));
 dragTo(nodeFor(chart, K('Brant.png')), chart);
 check('a drag onto the background does not deselect',
@@ -601,6 +609,7 @@ check('and it re-rooted the node', N('Brant.png').parent === null);
 // Put Brant back under Aldia; the checks below are about a nested node.
 N('Brant.png').parent = K('Aldia.png');
 await redraw();
+await settleClick();
 clickCard(nodeFor(chart, K('Brant.png')));
 strip = chart.querySelector('.ch-node-actions');
 
@@ -616,6 +625,7 @@ check('and the editor empties with it', editor.textContent.includes('Click a nod
 // ---------- T21: the editor applies live ----------
 setTree({ 'Aldia.png': node(null), 'Brant.png': node('Aldia.png') });
 await redraw();
+await settleClick();
 clickCard(nodeFor(chart, K('Brant.png')));
 
 const roleSelect = editor.querySelectorAll('select')[0];
@@ -633,6 +643,24 @@ check('picking a lorebook in the editor saves it to the node',
 check('the node box shows its book count',
     nodeFor(chart, K('Brant.png')).querySelector('.ch-node-books')?.textContent === '1 book');
 
+// ---------- double click opens what the node stands for ----------
+// Re-queried between the two clicks: selecting repaints the chart, and a click on the old
+// detached element would never reach the document listeners the drag runs on.
+const dblClick = (key) => { clickCard(nodeFor(chart, key)); clickCard(nodeFor(chart, key)); };
+
+globalThis.__characterOpened = null;
+dblClick(K('Brant.png'));
+check('double-clicking a character opens its chat',
+    globalThis.__characterOpened === Number(idxOf('Brant.png')),
+    String(globalThis.__characterOpened));
+
+// a single click must still just select
+globalThis.__characterOpened = null;
+await new Promise((resolve) => setTimeout(resolve, 0));
+clickCard(nodeFor(chart, K('Aldia.png')));
+check('a single click still only selects', globalThis.__characterOpened === null
+    && nodeFor(chart, K('Aldia.png')).classList.contains('ch-node-selected'));
+
 // ---------- T22: lorebooks on the chart ----------
 S().nodes = {};
 await redraw();
@@ -646,7 +674,14 @@ check('it is labelled as a lorebook',
     bookBox.querySelector('.ch-node-role').textContent === 'lorebook');
 check('a lorebook is always a container', S().nodes['book:Aldia Lore'].role === 'info');
 
-dragTo(listRow('Brant.png'), bookBox);
+globalThis.__worldInfoOpened = null;
+await settleClick();
+dblClick('book:Aldia Lore');
+check('double-clicking a lorebook opens it in the world info editor',
+    globalThis.__worldInfoOpened === 'Aldia Lore', String(globalThis.__worldInfoOpened));
+
+// re-queried: the double click above repainted the chart
+dragTo(listRow('Brant.png'), nodeFor(chart, 'book:Aldia Lore'));
 check('a character can be nested under a lorebook',
     N('Brant.png').parent === 'book:Aldia Lore');
 
@@ -664,6 +699,22 @@ check('a persona node shows its name',
     personaBox.querySelector('.ch-node-name').textContent === 'Traveller');
 check('it is labelled as a persona',
     personaBox.querySelector('.ch-node-role').textContent === 'persona');
+
+globalThis.__personaNavigatedTo = null;
+// SillyTavern binds the navbar handler to this toggle itself, so count the click rather than
+// the drawer opening — the click is the part this extension is responsible for.
+let personaToggleClicks = 0;
+document.querySelector('#persona-management-button .drawer-toggle')
+    .addEventListener('click', () => { personaToggleClicks += 1; });
+
+await settleClick();
+dblClick('persona:me.png');
+await new Promise((resolve) => setTimeout(resolve, 0)); // the open path awaits
+
+check('double-clicking a persona opens the persona manager at it',
+    globalThis.__personaNavigatedTo === 'me.png', String(globalThis.__personaNavigatedTo));
+check('and it asked the persona drawer to open', personaToggleClicks === 1,
+    String(personaToggleClicks));
 
 parentCmd2.callback({ char: 'Sir Brant' }, ''); // detach Brant from the lorebook
 S().nodes[K('Brant.png')].parent = 'persona:me.png';

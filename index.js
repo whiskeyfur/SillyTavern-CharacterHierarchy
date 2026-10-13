@@ -33,9 +33,11 @@ import {
     METADATA_KEY,
     loadWorldInfo,
     newWorldInfoEntryTemplate,
+    openWorldInfoEditor,
     selected_world_info,
     world_info,
 } from '../../../world-info.js';
+import { getUserAvatars } from '../../../personas.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
 import { download, getCharaFilename, getFileText } from '../../../utils.js';
 import { doNavbarIconClick, entitiesFilter } from '../../../../script.js';
@@ -1508,10 +1510,20 @@ function onDragEnd(event) {
     const target = dragState.moved ? findDropTarget(event) : null;
     const state = cleanupDrag();
 
-    // A press that never travelled is a click. On the chart that selects the node; in
-    // SillyTavern's character list it is their click to handle, not ours.
+    // A press that never travelled is a click. On the chart that selects the node, or on a
+    // second quick click opens whatever the node stands for. In SillyTavern's character list
+    // it is their click to handle, not ours.
     if (!state.moved) {
         if (state.origin === 'chart') {
+            const now = Date.now();
+
+            if (lastNodeClick.key === state.key && now - lastNodeClick.at < DOUBLE_CLICK_MS) {
+                lastNodeClick = { key: null, at: 0 };
+                openNodeTarget(state.key);
+                return;
+            }
+
+            lastNodeClick = { key: state.key, at: now };
             selectNode(state.key);
         }
         return;
@@ -1774,6 +1786,61 @@ function renderNodeActions(container, positions) {
 
 /** Where a press on empty chart space began, so a click can be told from a drag. */
 let backgroundPress = null;
+
+/** How close together two clicks on a node count as a double click. */
+const DOUBLE_CLICK_MS = 400;
+
+/** The last node click, for spotting the second one. */
+let lastNodeClick = { key: null, at: 0 };
+
+/**
+ * Opens whatever a node stands for: a character's chat, a persona in the persona manager, or
+ * a lorebook in the world info editor.
+ *
+ * Double click is detected from our own pointer handling rather than the native dblclick
+ * event, which a chart node never sees — pointerdown is defaulted away there to stop the
+ * browser starting a drag or a selection of its own.
+ *
+ * @param {string} key The node key.
+ */
+async function openNodeTarget(key) {
+    const { type, id } = parseKey(key);
+
+    if (!nodeExists(key)) {
+        toastr.warning(`${displayName(key)} is not installed any more.`, 'Character Hierarchy');
+        return;
+    }
+
+    try {
+        switch (type) {
+            case NODE_TYPES.BOOK:
+                openWorldInfoEditor(id);
+                break;
+
+            case NODE_TYPES.PERSONA: {
+                const toggle = document.querySelector('#persona-management-button .drawer-toggle');
+                if (toggle instanceof HTMLElement
+                    && !document.querySelector('#persona-management-button .drawer-content')
+                        ?.classList.contains('openDrawer')) {
+                    toggle.click();
+                }
+                // Pages the persona list to the one asked for, the way SillyTavern does.
+                await getUserAvatars(true, id);
+                break;
+            }
+
+            default: {
+                const index = indexByAvatar().get(id);
+                if (index !== undefined) {
+                    await getContext().selectCharacterById(index);
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`${LOG} could not open ${key}`, error);
+        toastr.error(`Could not open ${displayName(key)}.`, 'Character Hierarchy');
+    }
+}
 
 /**
  * Clicking empty chart space clears the selection. Both the press and the release have to land
