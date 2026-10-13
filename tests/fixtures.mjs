@@ -128,6 +128,15 @@ for (const person of ['Peter', 'Paul', 'Mary']) {
         cardTextIn(entries).length === 3, JSON.stringify(cardTextIn(entries)));
 }
 
+// A card with an empty chat name asks SillyTavern for a chat called "", which it cannot
+// repair: its fallback uses ??, which does not fire on an empty string.
+const cardFiles = readdirSync(path.join(FIXTURES, 'characters')).filter((f) => f.endsWith('.json'));
+const noChatName = cardFiles.filter((file) => {
+    const card = JSON.parse(readFileSync(path.join(FIXTURES, 'characters', file), 'utf-8'));
+    return !String(card.chat ?? '').trim();
+});
+check('every card carries a usable chat name', noChatName.length === 0, noChatName.join(', '));
+
 const peter = await scanAs('Peter.png');
 const keyed = (key) => peter.find((entry) => Array.isArray(entry.key) && entry.key.includes(key));
 check('an Earth-tier key answers for Peter', keyed('gravity')?.world === 'Earth');

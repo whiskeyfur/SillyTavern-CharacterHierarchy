@@ -120,6 +120,17 @@ function lorebook(entries) {
 
 // ---------------------------------------------------------------- cards
 
+/**
+ * SillyTavern's chat file naming, so a generated card carries a usable chat name.
+ * @returns {string} e.g. `2026-10-12@20h45m25s798ms`.
+ */
+function humanizedDateTime(date = new Date()) {
+    const pad = (value, width = 2) => String(value).padStart(width, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+        + `@${pad(date.getHours())}h${pad(date.getMinutes())}m${pad(date.getSeconds())}s`
+        + `${pad(date.getMilliseconds(), 3)}ms`;
+}
+
 /** @returns {object} A Character Card V2 object. */
 function card({ name, description, personality = '', scenario = '', firstMes = '', notes, tags, world }) {
     const data = {
@@ -154,7 +165,9 @@ function card({ name, description, personality = '', scenario = '', firstMes = '
         mes_example: '',
         creatorcomment: notes,
         avatar: 'none',
-        chat: '',
+        // Not left empty: SillyTavern repairs a *missing* chat name with ??, which does not
+        // fire on an empty string, so the card would ask the server for a chat called "".
+        chat: `${name} - ${humanizedDateTime()}`,
         talkativeness: '0.5',
         fav: false,
         tags,
