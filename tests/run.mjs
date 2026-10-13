@@ -28,7 +28,7 @@ globalThis.__templateDir = EXT_SRC;
 
 // ---------- DOM ----------
 const dom = new JSDOM(`<!doctype html><html><body>
-    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div></div><div id="extensions_settings2"></div>
+    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div></div><div id="extensions_settings2"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
     <div id="avatar_controls">
         <div class="form_create_bottom_buttons_block">
             <div id="favorite_button"></div>
@@ -40,7 +40,7 @@ const dom = new JSDOM(`<!doctype html><html><body>
 
 for (const key of ['window', 'document', 'Element', 'HTMLElement', 'HTMLInputElement',
     'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLOptionElement', 'Node',
-    'DocumentFragment', 'Event', 'CustomEvent', 'File']) {
+    'DocumentFragment', 'Event', 'CustomEvent', 'File', 'MutationObserver']) {
     globalThis[key] = key === 'window' ? dom.window : dom.window[key];
 }
 
@@ -112,6 +112,7 @@ globalThis.__ctx = {
 
 // ---------- load the extension ----------
 const { extension_settings } = await import(path.join(SCRIPTS, 'extensions.js'));
+const { FILTER_STATES: FILTER_STATES_ORDER } = await import(path.join(SCRIPTS, 'filters.js'));
 const wi = await import(path.join(SCRIPTS, 'world-info.js'));
 const ext = await import(path.join(EXT_DIR, 'index.js'));
 
@@ -568,6 +569,86 @@ check('the character panel button reopens the drawer', drawerContent.classList.c
 check('it selects the open character',
     editor.querySelector('.ch-editor-name')?.textContent === 'Sir Brant',
     editor.querySelector('.ch-editor-name')?.textContent);
+
+// ---------- T30: the tri-state character list filter ----------
+const { entitiesFilter } = await import(path.join(TMP, 'public/script.js'));
+const filterRow = document.querySelector('#rm_characters_block .rm_tag_filter');
+const filterButton = document.getElementById('character_hierarchy_filter');
+
+check('a filter button is added to the character list filter row',
+    !!filterButton && filterButton.parentElement === filterRow);
+check('it sits ahead of the tag management buttons',
+    filterButton?.nextElementSibling?.classList.contains('manageTags'));
+check('it is shaped like SillyTavern\'s own actionable filter tags',
+    filterButton.classList.contains('tag') && filterButton.classList.contains('actionable')
+    && !!filterButton.querySelector('.tag_name.fa-sitemap'));
+check('it starts in the off state',
+    filterButton.dataset.toggleState === 'UNDEFINED'
+    && filterButton.classList.contains('undefined'),
+    filterButton.dataset.toggleState);
+
+// the tree for the filter checks: Vance and Brant are nested, Mira and Aldia are not
+S().nodes = { 'Vance.png': node(null), 'Brant.png': node('Vance.png') };
+const entities = CHARACTERS.map((c, id) => ({ item: c, id, type: 'character' }));
+entities.push({ item: { name: 'a folder' }, id: 'f', type: 'tag' });
+const visible = () => entitiesFilter.applyFilters(entities)
+    .filter((e) => e.type === 'character').map((e) => e.item.avatar).sort();
+
+check('with the filter off, every card is listed',
+    visible().length === CHARACTERS.length, String(visible().length));
+
+filterButton.dispatchEvent(new dom.window.Event('click'));
+check('one click selects "only in a hierarchy"',
+    filterButton.dataset.toggleState === 'SELECTED' && filterButton.classList.contains('selected'));
+check('only the nested cards are listed',
+    JSON.stringify(visible()) === JSON.stringify(['Brant.png', 'Vance.png']), JSON.stringify(visible()));
+check('folders survive the filter',
+    entitiesFilter.applyFilters(entities).some((e) => e.type === 'tag'));
+
+filterButton.dispatchEvent(new dom.window.Event('click'));
+check('a second click excludes them',
+    filterButton.dataset.toggleState === 'EXCLUDED' && filterButton.classList.contains('excluded'));
+check('the nested cards are hidden and the rest remain',
+    !visible().includes('Brant.png') && !visible().includes('Vance.png')
+    && visible().includes('Mira.png'), JSON.stringify(visible()));
+
+filterButton.dispatchEvent(new dom.window.Event('click'));
+check('a third click returns to off', filterButton.dataset.toggleState === 'UNDEFINED');
+check('the choice is remembered in settings', S().listFilterState === 'UNDEFINED');
+check('the cycle matches SillyTavern\'s own tri-state order',
+    JSON.stringify(Object.keys(FILTER_STATES_ORDER)) === '["SELECTED","EXCLUDED","UNDEFINED"]');
+
+// ---------- T31: the filter follows tree edits, without looping ----------
+filterButton.dispatchEvent(new dom.window.Event('click')); // back to SELECTED
+globalThis.__listRepaints = 0;
+parentCmd2.callback({ char: 'Mira' }, 'House Vance'); // a tree edit, which calls save()
+check('editing the tree repaints the filtered character list',
+    globalThis.__listRepaints > 0, String(globalThis.__listRepaints));
+check('the newly nested card appears under the filter',
+    visible().includes('Mira.png'), JSON.stringify(visible()));
+
+// a repaint emits CHARACTER_PAGE_LOADED, which the extension listens to; make sure that
+// round trip cannot drive the filter into an endless repaint loop
+globalThis.__listRepaints = 0;
+await redraw();
+check('a list repaint does not feed back into another repaint',
+    globalThis.__listRepaints === 0, String(globalThis.__listRepaints));
+
+filterButton.dispatchEvent(new dom.window.Event('click'));
+filterButton.dispatchEvent(new dom.window.Event('click')); // back to off
+globalThis.__listRepaints = 0;
+parentCmd2.callback({ char: 'Mira' }, '');
+check('with the filter off, tree edits do not touch the character list',
+    globalThis.__listRepaints === 0, String(globalThis.__listRepaints));
+
+// ---------- T32: the button survives the row being re-rendered ----------
+filterRow.innerHTML = '<span class="tag actionable manageTags"></span>';
+await new Promise((resolve) => setTimeout(resolve, 0));
+check('the button is restored when SillyTavern rebuilds the filter row',
+    !!document.getElementById('character_hierarchy_filter'));
+check('and is not duplicated',
+    document.querySelectorAll('#character_hierarchy_filter').length === 1,
+    String(document.querySelectorAll('#character_hierarchy_filter').length));
 
 await ext.init(); // idempotent
 check('only one settings panel exists after a second init()',

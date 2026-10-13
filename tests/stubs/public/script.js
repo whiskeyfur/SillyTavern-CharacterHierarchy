@@ -25,3 +25,33 @@ export async function doNavbarIconClick() {
         icon?.classList.replace('openIcon', 'closedIcon');
     }
 }
+
+/**
+ * Stand-in for SillyTavern's shared character list filter. Mirrors the real FilterHelper
+ * closely enough for the extension's tri-state button: public filterData/filterFunctions,
+ * a tri-state helper, and an onDataChanged callback that short-circuits on equal values.
+ */
+export const entitiesFilter = {
+    filterData: {},
+    filterFunctions: {},
+    onDataChanged: () => { globalThis.__listRepaints = (globalThis.__listRepaints ?? 0) + 1; },
+    setFilterData(type, data) {
+        const old = this.filterData[type];
+        this.filterData[type] = data;
+        if (JSON.stringify(old) !== JSON.stringify(data)) {
+            this.onDataChanged();
+        }
+    },
+    filterDataByState(data, state, predicate, { includeFolders = false } = {}) {
+        if (state === 'SELECTED') {
+            return data.filter((e) => predicate(e) || (includeFolders && e.type === 'tag'));
+        }
+        if (state === 'EXCLUDED') {
+            return data.filter((e) => !predicate(e) || (includeFolders && e.type === 'tag'));
+        }
+        return data;
+    },
+    applyFilters(data) {
+        return Object.values(this.filterFunctions).reduce((acc, fn) => fn(acc), data);
+    },
+};

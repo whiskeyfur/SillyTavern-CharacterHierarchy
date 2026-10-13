@@ -44,12 +44,12 @@ const CHARACTERS = readdirSync(path.join(FIXTURES, 'characters'))
         };
     });
 
-const dom = new JSDOM('<!doctype html><html><body><div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div></div><div id="extensions_settings2"></div>'
+const dom = new JSDOM('<!doctype html><html><body><div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div></div><div id="extensions_settings2"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>'
     + '<div id="avatar_controls"><div class="form_create_bottom_buttons_block">'
     + '<div id="world_button"></div></div></div></body></html>', { url: 'http://localhost/' });
 for (const key of ['window', 'document', 'Element', 'HTMLElement', 'HTMLInputElement',
     'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLOptionElement', 'Node',
-    'DocumentFragment', 'Event', 'CustomEvent', 'File']) {
+    'DocumentFragment', 'Event', 'CustomEvent', 'File', 'MutationObserver']) {
     globalThis[key] = key === 'window' ? dom.window : dom.window[key];
 }
 globalThis.toastr = { info: () => {}, success: () => {}, warning: () => {}, error: () => {} };

@@ -38,8 +38,9 @@ import {
 } from '../../../world-info.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
 import { download, getCharaFilename, getFileText } from '../../../utils.js';
-import { doNavbarIconClick } from '../../../../script.js';
+import { doNavbarIconClick, entitiesFilter } from '../../../../script.js';
 import { dragElement } from '../../../RossAscends-mods.js';
+import { DEFAULT_FILTER_STATE, FILTER_STATES } from '../../../filters.js';
 
 const MODULE_NAME = 'characterHierarchy';
 const LOG = '[CharacterHierarchy]';
@@ -47,6 +48,14 @@ const LOG = '[CharacterHierarchy]';
 /** The top bar drawer, alongside World Info, Extensions and the rest. */
 const DRAWER_BUTTON_ID = 'character_hierarchy_drawer_button';
 const DRAWER_ID = 'character_hierarchy_drawer';
+
+/** The tri-state button added to the character list's filter row. */
+const LIST_FILTER_KEY = 'characterHierarchy';
+const LIST_FILTER_BUTTON_ID = 'character_hierarchy_filter';
+const CHARACTER_FILTER_ROW = '#rm_characters_block .rm_tag_filter';
+
+/** SillyTavern cycles its tri-state tags in key order: selected, excluded, then off. */
+const FILTER_STATE_KEYS = Object.keys(FILTER_STATES);
 
 const ROLE = Object.freeze({ ACTOR: 'actor', INFO: 'info' });
 const SCOPE = Object.freeze({ SPEAKER: 'speaker', ALL_MEMBERS: 'allMembers' });
@@ -90,6 +99,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     cardTextOrder: 100,
     maxDepth: 16,
     orderPenaltyPerLevel: 0,
+    listFilterState: DEFAULT_FILTER_STATE,
     debug: false,
 });
 
@@ -122,6 +132,8 @@ function settings() {
 
 function save() {
     getContext().saveSettingsDebounced();
+    // The character list may be filtered on tree membership, which just changed.
+    refreshCharacterListFilter();
 }
 
 /**
@@ -1084,6 +1096,107 @@ function onDragEnd(event) {
     renderAll();
 }
 
+// ---------------------------------------------------------------- character list filter
+
+/** @returns {string} The stored tri-state, falling back to "off". */
+function getListFilterState() {
+    const state = settings().listFilterState;
+    return FILTER_STATE_KEYS.includes(state) ? state : DEFAULT_FILTER_STATE;
+}
+
+/**
+ * Registers a filter on the character list that knows about the hierarchy, so the tri-state
+ * button can show only the cards in a tree, or hide them.
+ */
+function installCharacterListFilter() {
+    const isInHierarchy = (entity) => entity?.type === 'character' && Boolean(getNode(entity.item?.avatar));
+
+    entitiesFilter.filterData[LIST_FILTER_KEY] = getListFilterState();
+    entitiesFilter.filterFunctions[LIST_FILTER_KEY] = (data) => entitiesFilter.filterDataByState(
+        data,
+        entitiesFilter.filterData[LIST_FILTER_KEY],
+        isInHierarchy,
+        { includeFolders: true },
+    );
+}
+
+/**
+ * Repaints the character list when the tree changes underneath an active filter.
+ *
+ * setFilterData() short-circuits when the value has not changed, and here it has not — the
+ * membership behind it has — so the list is asked to redraw directly.
+ */
+function refreshCharacterListFilter() {
+    if (getListFilterState() === DEFAULT_FILTER_STATE) {
+        return;
+    }
+    entitiesFilter.onDataChanged?.();
+}
+
+/**
+ * @param {HTMLElement} button The filter button.
+ * @param {string} state One of FILTER_STATE_KEYS.
+ */
+function paintFilterButton(button, state) {
+    button.dataset.toggleState = state;
+    for (const key of FILTER_STATE_KEYS) {
+        button.classList.toggle(FILTER_STATES[key].class, key === state);
+    }
+}
+
+/** @returns {HTMLElement} A tri-state button shaped like SillyTavern's own filter tags. */
+function buildFilterButton() {
+    const button = el('span', { className: 'tag actionable', id: LIST_FILTER_BUTTON_ID });
+
+    const label = el('span', { className: 'tag_name fa-solid fa-sitemap' });
+    label.title = 'Show only cards in a hierarchy\n\nClick to cycle: any → only → exclude';
+    button.append(label);
+
+    paintFilterButton(button, getListFilterState());
+
+    button.addEventListener('click', () => {
+        const next = FILTER_STATE_KEYS[(FILTER_STATE_KEYS.indexOf(getListFilterState()) + 1) % FILTER_STATE_KEYS.length];
+        settings().listFilterState = next;
+        getContext().saveSettingsDebounced();
+        paintFilterButton(button, next);
+        entitiesFilter.setFilterData(LIST_FILTER_KEY, next);
+    });
+
+    return button;
+}
+
+/** Puts the button in the filter row, beside the favourites and groups toggles. */
+function mountFilterButton() {
+    const row = document.querySelector(CHARACTER_FILTER_ROW);
+
+    if (!row || row.querySelector(`#${LIST_FILTER_BUTTON_ID}`)) {
+        return;
+    }
+
+    const button = buildFilterButton();
+
+    // Sit with the other "kind of entity" filters, ahead of the tag management buttons.
+    const manageTags = row.querySelector('.manageTags');
+    if (manageTags) {
+        manageTags.before(button);
+    } else {
+        row.append(button);
+    }
+}
+
+/** printTagFilters() empties and refills the row, so the button has to be put back. */
+function watchFilterRow() {
+    const row = document.querySelector(CHARACTER_FILTER_ROW);
+
+    if (!row) {
+        console.warn(`${LOG} no character list filter row, skipping the hierarchy filter`);
+        return;
+    }
+
+    mountFilterButton();
+    new MutationObserver(() => mountFilterButton()).observe(row, { childList: true });
+}
+
 // ---------------------------------------------------------------- the top bar drawer
 
 /** @returns {boolean} True when the hierarchy panel is on screen. */
@@ -2003,6 +2116,8 @@ export async function init() {
 
     bindSettingsUi();
     addCharacterButton();
+    installCharacterListFilter();
+    watchFilterRow();
     renderAll();
 
     const context = getContext();

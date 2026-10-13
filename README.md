@@ -39,6 +39,8 @@ row, each card showing its avatar and role.](media/panel.png)
   group members can contribute to every message without ever being drafted to speak.
 - A **preview** that explains, without running a generation, exactly which books were chosen,
   how far away they were, which card offered them, and what was skipped.
+- A **tri-state filter** in the character list, alongside the favourites and groups toggles,
+  for showing only the cards in a hierarchy or hiding them.
 - **Slash commands** for scripting, and **JSON export/import** for moving a tree between
   installs.
 
@@ -85,6 +87,21 @@ lorebooks they hold; informational cards have a dashed border.
 The **sitemap button** in a character's own panel, next to the globe, opens the hierarchy panel
 with that card already selected. It lights up when the card is part of a tree, and its tooltip
 shows the full path to the root.
+
+### Filtering the character list
+
+A sitemap button joins the favourites, groups and folders toggles above the character list, and
+cycles the same three ways they do:
+
+| Click | State | Effect |
+| --- | --- | --- |
+| — | off | Every card is listed, as usual. |
+| once | only | Lists just the cards that are in a hierarchy. |
+| twice | exclude | Hides them, leaving everything that is not nested. |
+
+*Exclude* is the one to reach for when informational cards — kingdoms, houses, factions — are
+cluttering a list you are trying to pick a character from. Folders are left visible in both
+states, and the choice is remembered between sessions.
 
 ### Roles
 
