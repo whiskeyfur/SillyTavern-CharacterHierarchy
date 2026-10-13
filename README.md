@@ -146,9 +146,19 @@ descendant from a template:
 Placeholders: `{{name}}`, `{{description}}`, `{{personality}}`, `{{scenario}}`,
 `{{mesExamples}}`, `{{creatorNotes}}`. They read the **ancestor's** card, not the speaker's.
 
+The *Informational card text* section of the panel controls how the resulting entry behaves:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Always active | on | The entry is constant. Switch it off and it is keyed on the ancestor's name instead, so it only fires when that name comes up. |
+| Position | before character defs | Where the entry lands, matching world info's own positions: before or after the character definitions, top or bottom of the Author's Note, or at a depth. |
+| Depth | 4 | How far back in the chat the entry sits, when positioned at depth. |
+| Insertion order | 100 | Ordering against other entries, exactly as an ordinary world info entry's order works. |
+
 ## Settings
 
-All of these live in the two collapsible sections at the bottom of the panel.
+These live in the *What gets inherited* section at the bottom of the panel. The card text
+settings are in the section below it, and are covered under [Card text](#card-text).
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -233,7 +243,8 @@ real modules, loads the extension into jsdom, and drives it end to end. The pane
 from the real `drawer.html`, so the markup and the code that binds to it cannot drift apart;
 the top bar drawer is opened and closed through its own toggle; cards are dragged around the
 chart with synthesised pointer events and the resulting tree is checked; the chart's geometry
-and connector paths are asserted; and `WORLDINFO_ENTRIES_LOADED` is fired to confirm exactly
+and connector paths are asserted; the character list filter is cycled through its three states
+and the resulting list inspected; and `WORLDINFO_ENTRIES_LOADED` is fired to confirm exactly
 which entries come back.
 
 `npm run test:fixtures` runs the demo set through the same machinery, so the numbers quoted in
@@ -241,10 +252,23 @@ which entries come back.
 
 ## Requirements
 
-A SillyTavern build that emits `WORLDINFO_ENTRIES_LOADED` from `getSortedEntries()`, and whose
-top bar is `#top-settings-holder`. Developed and tested against SillyTavern `1.19.0`
-(commit `06bde93`). If the event is missing, the extension says so in the console and on screen
-at startup and stays inactive rather than failing quietly.
+Developed and tested against SillyTavern `1.19.0` (commit `06bde93`).
+
+Extensions have no formal API for most of this, so the extension imports a handful of
+SillyTavern's own modules. Each piece fails on its own rather than taking the rest down, and
+says why in the console:
+
+| What it uses | For | If it is missing |
+| --- | --- | --- |
+| `WORLDINFO_ENTRIES_LOADED` from `getSortedEntries()` | The whole point: appending inherited entries | Says so in the console and on screen at startup, and stays inactive |
+| `#top-settings-holder` | Adding the panel to the top bar | Logs an error; inheritance still runs, but there is no interface to edit the tree with |
+| `doNavbarIconClick` from `script.js` | Opening and closing the panel like every other drawer | Build error at load |
+| `entitiesFilter` and `filters.js` | The character list filter | Build error at load |
+| `#rm_characters_block .rm_tag_filter` | Placing the filter button | Logs a warning; everything else still works |
+| `dragElement` from `RossAscends-mods.js` | Dragging and resizing the panel, and only when *Movable UI panels* is on | Logs a warning; the panel still works, just fixed in place |
+
+The world info side — the part that actually matters — depends only on the event and on
+`world-info.js`. The rest is user interface.
 
 ## License
 

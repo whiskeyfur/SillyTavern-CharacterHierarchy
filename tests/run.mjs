@@ -654,6 +654,38 @@ await ext.init(); // idempotent
 check('only one settings panel exists after a second init()',
     document.querySelectorAll('#character_hierarchy_settings').length === 1);
 
+// ---------- T33: the feature does not depend on the interface ----------
+// A fresh load into a page with no top bar: the panel cannot be built, but inheritance is
+// the point of the extension and must still run.
+{
+    const bare = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+    const savedDoc = globalThis.document;
+    globalThis.document = bare.window.document;
+
+    const bareHandlers = new Map();
+    const bareSource = {
+        on(event, cb) { if (!bareHandlers.has(event)) bareHandlers.set(event, []); bareHandlers.get(event).push(cb); },
+        async emit(event, ...args) { for (const cb of bareHandlers.get(event) ?? []) await cb(...args); },
+    };
+    const bareCommands = new Map();
+    globalThis.__ctx = { ...globalThis.__ctx, eventSource: bareSource,
+        SlashCommandParser: { addCommandObject: (c) => bareCommands.set(c.name, c) } };
+
+    const headless = await import(path.join(EXT_DIR, 'index.js') + '?bare');
+    await headless.init();
+
+    check('a missing top bar does not stop the world info listener',
+        bareHandlers.has(eventTypes.WORLDINFO_ENTRIES_LOADED));
+    check('a missing top bar does not stop the slash commands',
+        bareCommands.has('hierarchy-chain'), [...bareCommands.keys()].join(','));
+
+    globalThis.document = savedDoc;
+
+    // That run logs a top bar error on purpose; keep it out of the unexpected-errors report.
+    errors.splice(0, errors.length,
+        ...errors.filter((e) => !e.includes('no #top-settings-holder')));
+}
+
 console.warn = origWarn;
 console.error = origError;
 

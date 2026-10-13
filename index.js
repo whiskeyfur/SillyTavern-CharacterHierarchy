@@ -2098,27 +2098,32 @@ export async function init() {
     }
 
     // The panel is a top bar drawer of its own; the Extensions tab only gets a pointer to it.
+    // If it cannot be built, world info inheritance still runs — it needs no interface at all.
+    let panelReady = false;
     try {
-        if (!await installDrawer()) {
-            return;
-        }
+        panelReady = await installDrawer();
     } catch (error) {
         console.error(`${LOG} could not build the hierarchy panel`, error);
-        return;
     }
 
-    try {
-        const html = await renderExtensionTemplateAsync(EXTENSION_PATH, 'settings');
-        document.getElementById('extensions_settings2')?.insertAdjacentHTML('beforeend', html);
-    } catch (error) {
-        console.warn(`${LOG} could not add the pointer to the Extensions tab`, error);
+    if (panelReady) {
+        try {
+            const html = await renderExtensionTemplateAsync(EXTENSION_PATH, 'settings');
+            document.getElementById('extensions_settings2')?.insertAdjacentHTML('beforeend', html);
+        } catch (error) {
+            console.warn(`${LOG} could not add the pointer to the Extensions tab`, error);
+        }
+
+        bindSettingsUi();
+        renderAll();
+    } else {
+        console.warn(`${LOG} running without a panel: inheritance works, but there is nothing to edit it with`);
     }
 
-    bindSettingsUi();
+    // These find their own anchors and warn if they are absent, so they do not need the panel.
     addCharacterButton();
     installCharacterListFilter();
     watchFilterRow();
-    renderAll();
 
     const context = getContext();
     const { eventSource, eventTypes } = context;
