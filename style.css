@@ -329,6 +329,12 @@
     color: var(--crimson70a, crimson);
 }
 
+.ch-node-action.ch-toggle-on {
+    color: var(--SmartThemeQuoteColor);
+    opacity: 1;
+    background-color: var(--white20a);
+}
+
 /* Let go here and the node comes off the chart. */
 .ch-ghost-remove {
     border-color: var(--crimson70a, crimson) !important;

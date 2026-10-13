@@ -589,6 +589,26 @@ check('it sits directly below that node',
     parseFloat(strip.style.top) === pos('Brant.png')[1] + 108,
     `${strip?.style.top} vs ${pos('Brant.png')[1] + 108}`);
 check('a nested node can be detached from the strip', !!strip.querySelector('.fa-link-slash'));
+check('the strip carries a focus toggle', !!strip.querySelector('.fa-crosshairs'));
+check('it shows as off while focus is off',
+    !strip.querySelector('.fa-crosshairs').classList.contains('ch-toggle-on'));
+
+strip.querySelector('.fa-crosshairs').dispatchEvent(new dom.window.Event('click'));
+check('the strip toggle turns focus on', S().focusLineage === true);
+check('it anchors on the node it belongs to',
+    [...chart.querySelectorAll('.ch-node')].map((b) => b.dataset.key).includes(K('Brant.png')));
+check('the header toggle follows it',
+    document.getElementById('ch_focus').classList.contains('ch-toggle-on'));
+
+strip = chart.querySelector('.ch-node-actions');
+check('the strip toggle now shows as on',
+    strip.querySelector('.fa-crosshairs').classList.contains('ch-toggle-on'));
+strip.querySelector('.fa-crosshairs').dispatchEvent(new dom.window.Event('click'));
+check('clicking it again turns focus off', S().focusLineage === false);
+check('and the header toggle follows back',
+    !document.getElementById('ch_focus').classList.contains('ch-toggle-on'));
+
+strip = chart.querySelector('.ch-node-actions');
 
 // ---------- clicking empty chart space clears the selection ----------
 chart.dispatchEvent(pev('pointerdown', 400, 400));

@@ -1763,6 +1763,20 @@ function renderNodeActions(container, positions) {
     actions.style.left = `${position.x}px`;
     actions.style.top = `${position.y + NODE_HEIGHT}px`;
 
+    const focused = Boolean(settings().focusLineage);
+    const focus = el('div', {
+        className: `ch-node-action fa-solid fa-crosshairs${focused ? ' ch-toggle-on' : ''}`,
+        title: focused ? 'Show the whole chart again' : 'Show only this node\'s line',
+    });
+    focus.addEventListener('click', () => {
+        settings().focusLineage = !focused;
+        getContext().saveSettingsDebounced();
+        syncFocusButton();
+        // Re-selecting re-anchors the focus on this node and repaints.
+        selectNode(selectedKey);
+    });
+    actions.append(focus);
+
     if (getParent(selectedKey)) {
         const detach = el('div', {
             className: 'ch-node-action fa-solid fa-link-slash',

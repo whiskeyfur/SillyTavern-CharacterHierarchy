@@ -99,7 +99,9 @@ header narrows it to a single line: the selected node, everything above it, and 
 below it. Other roots and the side branches off shared ancestors drop out of view, and a note
 along the bottom says how many nodes are hidden so a half-empty chart is never a mystery.
 
-Clicking a different node re-focuses on that one. With nothing selected it follows whichever
+The same toggle sits in the action strip under a selected node, and in its right-click menu,
+so it is always within reach of whatever you are looking at. Clicking a different node
+re-focuses on that one. With nothing selected it follows whichever
 character is currently open, so opening the panel mid-chat shows that character's line. The
 toggle is remembered between sessions, and nothing is deleted — it only changes what is drawn.
 
