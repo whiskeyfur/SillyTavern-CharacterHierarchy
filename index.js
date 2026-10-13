@@ -1000,6 +1000,13 @@ const DRAG_THRESHOLD = 4;
 /** SillyTavern's own character list, which doubles as the source of new cards. */
 const CHARACTER_LIST = '#rm_print_characters_block';
 
+/** The drawer that list lives in. */
+const CHARACTER_PANEL = Object.freeze({
+    toggle: '#rightNavHolder .drawer-toggle',
+    content: '#right-nav-panel',
+    icon: '#rightNavDrawerIcon',
+});
+
 /** The node whose settings the panel under the chart is showing. */
 let selectedKey = null;
 
@@ -2172,6 +2179,74 @@ function watchFilterRow() {
 
 // ---------------------------------------------------------------- the top bar drawer
 
+/**
+ * What we changed to keep the character list on screen, so it can be put back exactly.
+ * @type {{opened: boolean, pinnedContent: boolean, pinnedIcon: boolean}|null}
+ */
+let listHold = null;
+
+/** @returns {boolean} True when SillyTavern's character list is on screen. */
+function isCharacterListOpen() {
+    return Boolean(document.querySelector(CHARACTER_PANEL.content)?.classList.contains('openDrawer'));
+}
+
+/**
+ * Brings the character list up alongside the chart, since the chart asks you to drag cards out
+ * of it. Drawers close one another, so it is also pinned for the moment — exactly the way
+ * SillyTavern's own pin does it — or opening our panel would shut it again.
+ */
+async function holdCharacterListOpen() {
+    const context = getContext();
+    const content = document.querySelector(CHARACTER_PANEL.content);
+    const toggle = document.querySelector(CHARACTER_PANEL.toggle);
+
+    // Two side-by-side panels do not fit a phone, so leave the choice to the user there.
+    if (!content || !toggle || listHold || context.isMobile?.()) {
+        return;
+    }
+
+    const opened = !isCharacterListOpen();
+    if (opened) {
+        await doNavbarIconClick.call($(toggle));
+    }
+
+    const icon = document.querySelector(CHARACTER_PANEL.icon);
+    const pinnedContent = !content.classList.contains('pinnedOpen');
+    const pinnedIcon = Boolean(icon) && !icon.classList.contains('drawerPinnedOpen');
+
+    if (pinnedContent) {
+        content.classList.add('pinnedOpen');
+    }
+    if (pinnedIcon) {
+        icon.classList.add('drawerPinnedOpen');
+    }
+
+    listHold = { opened, pinnedContent, pinnedIcon };
+}
+
+/** Undoes exactly what holdCharacterListOpen() did, and nothing the user did themselves. */
+async function releaseCharacterList() {
+    if (!listHold) {
+        return;
+    }
+
+    const hold = listHold;
+    listHold = null;
+
+    if (hold.pinnedContent) {
+        document.querySelector(CHARACTER_PANEL.content)?.classList.remove('pinnedOpen');
+    }
+    if (hold.pinnedIcon) {
+        document.querySelector(CHARACTER_PANEL.icon)?.classList.remove('drawerPinnedOpen');
+    }
+
+    // Only shut it again if we were the ones who opened it.
+    const toggle = document.querySelector(CHARACTER_PANEL.toggle);
+    if (hold.opened && toggle && isCharacterListOpen()) {
+        await doNavbarIconClick.call($(toggle));
+    }
+}
+
 /** @returns {boolean} True when the hierarchy panel is on screen. */
 function isDrawerOpen() {
     return Boolean(document.getElementById(DRAWER_ID)?.classList.contains('openDrawer'));
@@ -2245,10 +2320,33 @@ async function installDrawer() {
 
     // SillyTavern binds the navbar handler once at startup, so this drawer needs it by hand.
     toggle.addEventListener('click', async () => {
+        const opening = !isDrawerOpen();
+
+        if (opening) {
+            await holdCharacterListOpen();
+        }
+
         await doNavbarIconClick.call($(toggle));
+
+        if (!opening) {
+            await releaseCharacterList();
+        }
+
         // Catches the chart up on the way in, and clears the list dimming on the way out.
         renderAll();
     });
+
+    // Opening any other drawer closes ours without going through the handler above, so the
+    // character list would be left held open. Tidy up whenever our panel ends up shut.
+    holder.addEventListener('click', (event) => {
+        if (event.target instanceof Element && event.target.closest('.drawer-toggle')) {
+            setTimeout(() => {
+                if (!isDrawerOpen()) {
+                    releaseCharacterList();
+                }
+            }, 0);
+        }
+    }, true);
 
     const context = getContext();
     if (context.powerUserSettings?.movingUI && !context.isMobile?.()) {

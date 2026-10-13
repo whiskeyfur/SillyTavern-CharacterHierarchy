@@ -73,8 +73,9 @@ from its corner, like World Info and the other panels.
 
 ## Building a tree
 
-Click the **sitemap icon** in the top bar, and open the character list beside it — pin it open
-with its padlock so both stay on screen.
+Click the **sitemap icon** in the top bar. SillyTavern's character list comes up alongside the
+chart, since that is where new cards are dragged from, and goes back to however you had it when
+you close the chart again. (Not on a phone, where two panels side by side do not fit.)
 
 - **Drag a character out of the character list** and onto the chart to add it. Rows already on
   the chart are dimmed while the panel is open, so you can see at a glance what is left; close

@@ -28,7 +28,7 @@ globalThis.__templateDir = EXT_SRC;
 
 // ---------- DOM ----------
 const dom = new JSDOM(`<!doctype html><html><body>
-    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div></div><div id="extensions_settings2"></div><div id="rm_print_characters_block"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
+    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div><div id="rightNavHolder" class="drawer"><div class="drawer-toggle"><div id="rightNavDrawerIcon" class="drawer-icon closedIcon"></div></div><nav id="right-nav-panel" class="drawer-content closedDrawer"></nav></div></div><div id="extensions_settings2"></div><div id="rm_print_characters_block"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
     <div id="avatar_controls">
         <div class="form_create_bottom_buttons_block">
             <div id="favorite_button"></div>
@@ -710,6 +710,24 @@ setTree({ 'Aldia.png': node(null), 'Vance.png': node('Aldia.png'), 'Brant.png': 
 await redraw();
 const chToggle = drawerButton.querySelector('.drawer-toggle');
 const drawerIsOpen = () => drawerContent.classList.contains('openDrawer');
+/** The hold and release paths both await doNavbarIconClick, so let the microtasks drain. */
+const releaseTick = () => new Promise((resolve) => setTimeout(resolve, 1));
+
+/**
+ * SillyTavern binds its own navbar handler to the character list toggle, which the harness
+ * does not have, so stand in for it the same way the stub does for ours.
+ */
+function userTogglesList() {
+    const panel = document.getElementById('right-nav-panel');
+    const icon = document.getElementById('rightNavDrawerIcon');
+    if (panel.classList.contains('openDrawer')) {
+        panel.classList.replace('openDrawer', 'closedDrawer');
+        icon.classList.replace('openIcon', 'closedIcon');
+    } else {
+        panel.classList.replace('closedDrawer', 'openDrawer');
+        icon.classList.replace('closedIcon', 'openIcon');
+    }
+}
 async function setDrawer(open) {
     if (drawerIsOpen() !== open) {
         chToggle.dispatchEvent(new dom.window.Event('click'));
@@ -733,6 +751,62 @@ check('a list drag does nothing while the panel is shut', !!N('Aldia.png'));
 await setDrawer(true);
 check('reopening the panel brings the dimming back',
     listRow('Aldia.png').classList.contains('ch-on-chart'));
+
+// ---------- T29b2: the character list comes along for the ride ----------
+const listPanel = document.getElementById('right-nav-panel');
+const listIcon = document.getElementById('rightNavDrawerIcon');
+const listOpen = () => listPanel.classList.contains('openDrawer');
+
+// Our drawer is open from the block above; close it so the list state is ours to set.
+await setDrawer(false);
+await releaseTick();
+check('the character list starts closed', !listOpen());
+
+await setDrawer(true);
+check('opening the chart brings the character list up with it', listOpen());
+check('and the chart stays open beside it', drawerIsOpen());
+check('the list is pinned for the moment, or opening ours would shut it',
+    listPanel.classList.contains('pinnedOpen') && listIcon.classList.contains('drawerPinnedOpen'));
+
+await setDrawer(false);
+await releaseTick();
+check('closing the chart puts the list back', !listOpen());
+check('and takes the temporary pin off again',
+    !listPanel.classList.contains('pinnedOpen') && !listIcon.classList.contains('drawerPinnedOpen'));
+
+// A list the user opened themselves must be left alone.
+userTogglesList();
+check('the user can open the list on their own', listOpen());
+await setDrawer(true);
+await setDrawer(false);
+await releaseTick();
+check('closing the chart leaves a list the user opened', listOpen(),
+    'the extension shut a list it did not open');
+
+// A pin the user set must survive too.
+listPanel.classList.add('pinnedOpen');
+listIcon.classList.add('drawerPinnedOpen');
+await setDrawer(true);
+await setDrawer(false);
+await releaseTick();
+check('a pin the user set is not removed',
+    listPanel.classList.contains('pinnedOpen') && listIcon.classList.contains('drawerPinnedOpen'));
+listPanel.classList.remove('pinnedOpen');
+listIcon.classList.remove('drawerPinnedOpen');
+userTogglesList();
+
+// Another drawer opening closes ours without going through our toggle.
+await setDrawer(true);
+check('the list came up again', listOpen());
+document.querySelector('#WI-SP-button')?.appendChild(Object.assign(
+    document.createElement('div'), { className: 'drawer-toggle' }));
+document.querySelector('#WI-SP-button .drawer-toggle').dispatchEvent(
+    new dom.window.MouseEvent('click', { bubbles: true }));
+drawerContent.classList.replace('openDrawer', 'closedDrawer'); // what doNavbarIconClick does
+await releaseTick();
+check('a drawer opening elsewhere still releases the list', !listOpen());
+
+await setDrawer(true);
 
 // ---------- T29c: focusing on one line ----------
 setTree({
