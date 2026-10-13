@@ -106,43 +106,6 @@
     stroke-width: 2;
 }
 
-.ch-tray-pane {
-    flex: 0 0 168px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-
-.ch-tray-head {
-    font-size: calc(var(--mainFontSize) * 0.85);
-    opacity: 0.75;
-}
-
-.ch-tray-filter {
-    margin: 0;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.ch-tray {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 6px;
-    border: 1px dashed var(--SmartThemeBorderColor);
-    border-radius: 6px;
-}
-
-.ch-tray.ch-drop-ok {
-    border-style: solid;
-    border-color: var(--SmartThemeQuoteColor);
-    background-color: var(--white20a);
-}
-
 /* ---------------------------------------------------------------- card boxes */
 
 .ch-node {
@@ -256,6 +219,74 @@
     padding: 0.75em;
     text-align: center;
     font-size: calc(var(--mainFontSize) * 0.85);
+}
+
+/* An icon stands in where there is no portrait: lorebooks, and anything uninstalled. */
+.ch-node-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background-color: var(--white20a);
+    color: var(--SmartThemeQuoteColor);
+}
+
+.ch-node-book {
+    border-style: dashed;
+}
+
+/* The actions that appear directly under the selected node. */
+.ch-node-actions {
+    position: absolute;
+    display: flex;
+    gap: 4px;
+    margin: var(--ch-pad) 0 0 var(--ch-pad);
+    padding: 3px 5px;
+    transform: translateY(4px);
+    border: 1px solid var(--SmartThemeQuoteColor);
+    border-radius: 6px;
+    background-color: var(--SmartThemeBlurTintColor);
+    z-index: 3;
+}
+
+.ch-node-action {
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: calc(var(--mainFontSize) * 0.9);
+    opacity: 0.8;
+}
+
+.ch-node-action:hover {
+    opacity: 1;
+    background-color: var(--white20a);
+}
+
+.ch-node-action-remove:hover {
+    color: var(--crimson70a, crimson);
+}
+
+/* Let go here and the node comes off the chart. */
+.ch-ghost-remove {
+    border-color: var(--crimson70a, crimson) !important;
+    box-shadow: 0 0 0 2px var(--crimson70a, crimson), 0 4px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+/*
+ * Rows in SillyTavern's own character list that are already on the chart. Dimmed rather than
+ * disabled: dragging one again just re-parents it.
+ */
+.character_select.ch-on-chart {
+    opacity: 0.45;
+}
+
+.character_select.ch-on-chart .ch_name::after {
+    content: ' \f0e8';
+    font-family: 'Font Awesome 6 Free', 'Font Awesome 5 Free';
+    font-weight: 900;
+    font-size: 0.8em;
+    opacity: 0.8;
+    margin-left: 0.4em;
 }
 
 /* ---------------------------------------------------------------- card editor */
@@ -374,16 +405,5 @@
     .ch-chart-pane {
         height: 320px;
         flex: 0 0 auto;
-    }
-
-    .ch-tray-pane {
-        flex: 0 0 auto;
-    }
-
-    .ch-tray {
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        max-height: 180px;
     }
 }

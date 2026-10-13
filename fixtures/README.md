@@ -35,10 +35,11 @@ the tide is out and Earth's does.
 3. **Then the tree.** Open the hierarchy panel from the sitemap icon in the top bar, then use
    its *import* button → `hierarchy.json`.
 
-Step 3 keys cards by avatar file name, so it expects `Earth.png`, `North America.png`,
-`USA.png`, `Peter.png`, `Paul.png` and `Mary.png`. If SillyTavern renamed a card on import
-because one of those names was already taken, the chart will show the old name greyed out as
-`(not installed)` — drag the real card into its place and drop the stale one on the tray.
+Step 3 keys nodes as `char:<avatar file name>`, so it expects `char:Earth.png`,
+`char:North America.png`, `char:USA.png`, `char:Peter.png`, `char:Paul.png` and
+`char:Mary.png`. If SillyTavern renamed a card on import because one of those names was already
+taken, the chart will show the old name greyed out as `(not installed)` — drag the real card in
+from the character list and right-click the stale one to remove it.
 
 ## Checking it worked
 

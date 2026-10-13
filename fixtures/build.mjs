@@ -380,13 +380,15 @@ const HIERARCHY = {
     format: 'sillytavern-character-hierarchy',
     version: 1,
     exportedAt: new Date().toISOString(),
+    // Node keys are typed: `char:` for a character card, `book:` for a lorebook, `persona:`
+    // for a persona. Older exports used bare avatar names and are migrated on import.
     nodes: {
-        'Earth.png': { parent: null, role: 'info', books: [], includeCardText: true },
-        'North America.png': { parent: 'Earth.png', role: 'info', books: [], includeCardText: true },
-        'USA.png': { parent: 'North America.png', role: 'info', books: [], includeCardText: true },
-        'Peter.png': { parent: 'USA.png', role: 'actor', books: [], includeCardText: false },
-        'Paul.png': { parent: 'USA.png', role: 'actor', books: [], includeCardText: false },
-        'Mary.png': { parent: 'USA.png', role: 'actor', books: [], includeCardText: false },
+        'char:Earth.png': { parent: null, role: 'info', books: [], includeCardText: true },
+        'char:North America.png': { parent: 'char:Earth.png', role: 'info', books: [], includeCardText: true },
+        'char:USA.png': { parent: 'char:North America.png', role: 'info', books: [], includeCardText: true },
+        'char:Peter.png': { parent: 'char:USA.png', role: 'actor', books: [], includeCardText: false },
+        'char:Paul.png': { parent: 'char:USA.png', role: 'actor', books: [], includeCardText: false },
+        'char:Mary.png': { parent: 'char:USA.png', role: 'actor', books: [], includeCardText: false },
     },
 };
 

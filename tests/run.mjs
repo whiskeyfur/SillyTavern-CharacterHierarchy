@@ -28,7 +28,7 @@ globalThis.__templateDir = EXT_SRC;
 
 // ---------- DOM ----------
 const dom = new JSDOM(`<!doctype html><html><body>
-    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div></div><div id="extensions_settings2"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
+    <div id="top-settings-holder"><div id="WI-SP-button" class="drawer"></div></div><div id="extensions_settings2"></div><div id="rm_print_characters_block"></div><div id="rm_characters_block"><div class="tags rm_tag_filter"><span class="tag actionable manageTags"></span></div></div>
     <div id="avatar_controls">
         <div class="form_create_bottom_buttons_block">
             <div id="favorite_button"></div>
@@ -97,7 +97,10 @@ globalThis.__ctx = {
     groupId: undefined,
     groups: [],
     chatMetadata: {},
-    powerUserSettings: {},
+    powerUserSettings: {
+        personas: { 'me.png': 'Traveller' },
+        persona_descriptions: { 'me.png': { description: 'A wanderer.', lorebook: 'Shared Book' } },
+    },
     eventSource,
     eventTypes,
     saveSettingsDebounced: () => {},
@@ -127,8 +130,19 @@ function check(name, condition, detail = '') {
 }
 
 const S = () => extension_settings.characterHierarchy;
-function setTree(nodes) { S().nodes = structuredClone(nodes); }
-const node = (parent, extra = {}) => ({ parent, role: 'actor', books: [], includeCardText: false, ...extra });
+
+/** Node keys are typed: a character card's key is its avatar behind a `char:` prefix. */
+const K = (avatar) => `char:${avatar}`;
+/** The stored node for a character avatar. */
+const N = (avatar) => S().nodes[K(avatar)];
+
+function setTree(nodes) {
+    S().nodes = Object.fromEntries(Object.entries(structuredClone(nodes))
+        .map(([avatar, value]) => [K(avatar), value]));
+}
+const node = (parent, extra = {}) => ({
+    parent: parent ? K(parent) : null, role: 'actor', books: [], includeCardText: false, ...extra,
+});
 
 const idxOf = (avatar) => String(CHARACTERS.findIndex((c) => c.avatar === avatar));
 
@@ -144,9 +158,10 @@ const worldsOf = (entries) => [...new Set(entries.map((e) => e.world))].sort();
 
 // ---------- T1: settings panel ----------
 check('settings panel is inserted', !!document.getElementById('character_hierarchy_settings'));
-check('chart and tray containers exist',
-    !!document.getElementById('ch_chart') && !!document.getElementById('ch_tray')
-    && !!document.getElementById('ch_editor'));
+check('chart and editor containers exist',
+    !!document.getElementById('ch_chart') && !!document.getElementById('ch_editor'));
+check('the tray is gone, cards come from SillyTavern\'s own list',
+    !document.getElementById('ch_tray') && !document.getElementById('ch_tray_filter'));
 const missingControls = warnings.filter((w) => w.includes('settings control'));
 check('every settings control is present', missingControls.length === 0, missingControls.join('; '));
 check('init logged no errors', errors.length === 0, errors.join('; '));
@@ -169,8 +184,10 @@ check('it has a top bar icon',
     !!drawerButton?.querySelector('.drawer-toggle .drawer-icon.fa-sitemap.closedIcon'));
 check('it starts closed', drawerContent?.classList.contains('closedDrawer'));
 check('the whole panel lives in the drawer',
-    !!drawerContent?.querySelector('#ch_chart') && !!drawerContent?.querySelector('#ch_tray')
-    && !!drawerContent?.querySelector('#ch_editor') && !!drawerContent?.querySelector('#ch_enabled'));
+    !!drawerContent?.querySelector('#ch_chart') && !!drawerContent?.querySelector('#ch_editor')
+    && !!drawerContent?.querySelector('#ch_enabled')
+    && !!drawerContent?.querySelector('#ch_add_book')
+    && !!drawerContent?.querySelector('#ch_add_persona'));
 check('the drag grabber is named after the panel, as dragElement expects',
     !!drawerContent?.querySelector('#character_hierarchy_drawerheader.drag-grabber'));
 check('panel dragging is left alone unless movingUI is on', globalThis.__dragged === undefined);
@@ -192,7 +209,7 @@ check('opening the drawer paints the chart',
 // ---------- T3: ancestors contribute, speaker's own and global books do not ----------
 wi.setGlobalBooks(['Global Book']);
 setTree({ 'Brant.png': node(null), 'Vance.png': node('Aldia.png'), 'Aldia.png': node(null) });
-S().nodes['Brant.png'].parent = 'Vance.png';
+N('Brant.png').parent = K('Vance.png');
 globalThis.__ctx.characterId = '0'; // Brant speaks
 
 let entries = await scan();
@@ -214,10 +231,11 @@ check('skips a book the chat lorebook already scans',
 globalThis.__ctx.chatMetadata = {};
 
 // ---------- T5: persona lorebook exclusion ----------
-globalThis.__ctx.powerUserSettings = { persona_description_lorebook: 'Vance Secrets' };
+const basePowerUser = globalThis.__ctx.powerUserSettings;
+globalThis.__ctx.powerUserSettings = { ...basePowerUser, persona_description_lorebook: 'Vance Secrets' };
 entries = await scan();
 check('skips a book the persona already scans', !entries.some((e) => e.world === 'Vance Secrets'));
-globalThis.__ctx.powerUserSettings = {};
+globalThis.__ctx.powerUserSettings = basePowerUser;
 
 // ---------- T6: order penalty by distance ----------
 S().orderPenaltyPerLevel = 10;
@@ -325,10 +343,10 @@ setTree({ 'Brant.png': node('Vance.png'), 'Vance.png': node('Aldia.png'), 'Aldia
 const parentCmd = commands.get('hierarchy-parent');
 parentCmd.callback({ char: 'Kingdom of Aldia' }, 'Sir Brant');
 check('a parent link that would close a loop is refused',
-    S().nodes['Aldia.png'].parent === null, String(S().nodes['Aldia.png'].parent));
+    N('Aldia.png').parent === null, String(N('Aldia.png').parent));
 
 // a loop smuggled in by hand must not hang the scan
-S().nodes['Aldia.png'].parent = 'Brant.png';
+N('Aldia.png').parent = K('Brant.png');
 entries = await scan();
 check('a hand-made loop still terminates', Array.isArray(entries));
 
@@ -341,7 +359,7 @@ check('/hierarchy-role reads a role',
     commands.get('hierarchy-role').callback({ char: 'Sir Brant' }, '') === 'actor');
 check('/hierarchy-role writes a role',
     commands.get('hierarchy-role').callback({ char: 'Sir Brant' }, 'info') === 'info'
-    && S().nodes['Brant.png'].role === 'info');
+    && N('Brant.png').role === 'info');
 check('/hierarchy-role rejects nonsense',
     commands.get('hierarchy-role').callback({ char: 'Sir Brant' }, 'banana') === 'info');
 check('/hierarchy-parent reads a parent',
@@ -352,17 +370,17 @@ const booksOut = await commands.get('hierarchy-books').callback({ char: 'Sir Bra
 check('/hierarchy-books lists inherited books',
     booksOut.includes('Vance Secrets') && booksOut.includes('Aldia Lore'), booksOut);
 
-// ---------- T15: the org chart ----------
+// ---------- T15: the chart, fed from SillyTavern's own character list ----------
 S().nodes = {};
 await redraw();
 const chart = document.getElementById('ch_chart');
-const tray = document.getElementById('ch_tray');
 const editor = document.getElementById('ch_editor');
+const charList = document.getElementById('rm_print_characters_block');
 const parentCmd2 = commands.get('hierarchy-parent');
 
 const pev = (type, x, y) => new dom.window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
 const nodesIn = (root) => [...root.querySelectorAll('.ch-node')];
-const nodeFor = (root, avatar) => nodesIn(root).find((n) => n.dataset.avatar === avatar);
+const nodeFor = (root, key) => nodesIn(root).find((n) => n.dataset.key === key);
 
 /** Press, travel past the drag threshold, release over the target. */
 function dragTo(fromEl, toEl) {
@@ -376,199 +394,230 @@ function clickCard(el) {
     el.dispatchEvent(pev('pointerup', 10, 10));
 }
 
-check('an empty chart invites a drag', chart.textContent.includes('Drag a card in'));
-check('the tray lists every card while the tree is empty', nodesIn(tray).length === CHARACTERS.length,
-    String(nodesIn(tray).length));
-check('the tray count is shown', document.getElementById('ch_tray_count').textContent === String(CHARACTERS.length));
-check('tray cards show their avatar image',
-    nodeFor(tray, 'Brant.png').querySelector('.ch-node-avatar')?.getAttribute('src')
-        ?.includes('file=Brant.png'),
-    nodeFor(tray, 'Brant.png').querySelector('.ch-node-avatar')?.getAttribute('src'));
-check('tray cards show the character name',
-    nodeFor(tray, 'Brant.png').querySelector('.ch-node-name').textContent === 'Sir Brant');
+/** Drives the "add a lorebook/persona" picker, choosing a specific entry. */
+async function addViaPicker(buttonId, value) {
+    globalThis.__onPopup = (content) => { content.querySelector('select').value = value; };
+    document.getElementById(buttonId).dispatchEvent(new dom.window.Event('click'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    globalThis.__onPopup = null;
+}
+const addLorebook = (name) => addViaPicker('ch_add_book', name);
+const addPersona = (id) => addViaPicker('ch_add_persona', id);
 
-// ---------- T16: tray filter ----------
-const trayFilter = document.getElementById('ch_tray_filter');
-trayFilter.value = 'mira';
-trayFilter.dispatchEvent(new dom.window.Event('input'));
-check('the tray filter narrows the list', nodesIn(tray).length === 1
-    && nodeFor(tray, 'Mira.png'), String(nodesIn(tray).length));
-trayFilter.value = '';
-trayFilter.dispatchEvent(new dom.window.Event('input'));
+/** Paints SillyTavern's character list the way printCharacters would. */
+function paintCharacterList() {
+    charList.innerHTML = '';
+    CHARACTERS.forEach((character, index) => {
+        const row = document.createElement('div');
+        row.className = 'character_select';
+        row.dataset.chid = String(index);
+        const name = document.createElement('span');
+        name.className = 'ch_name';
+        name.textContent = character.name;
+        row.append(name);
+        charList.append(row);
+    });
+}
+const listRow = (avatar) => [...charList.querySelectorAll('.character_select')]
+    .find((row) => CHARACTERS[Number(row.dataset.chid)].avatar === avatar);
 
-// ---------- T17: dragging out of the tray and onto a parent ----------
-dragTo(nodeFor(tray, 'Aldia.png'), chart);
-check('dropping a tray card on empty chart space makes it a root',
-    S().nodes['Aldia.png']?.parent === null && nodesIn(chart).length === 1,
+paintCharacterList();
+await new Promise((resolve) => setTimeout(resolve, 0)); // the observer decorates asynchronously
+
+check('an empty chart points at the character list', chart.textContent.includes('Drag a character here'));
+check('character list rows become drag sources',
+    [...charList.querySelectorAll('.character_select')].every((row) => row.dataset.chDragWired === 'true'));
+check('no row is dimmed while the chart is empty',
+    !charList.querySelector('.ch-on-chart'));
+
+// ---------- T16: dragging a character out of the list ----------
+dragTo(listRow('Aldia.png'), chart);
+check('dropping a list row on empty chart space adds it as a root',
+    N('Aldia.png')?.parent === null && nodesIn(chart).length === 1,
     JSON.stringify(Object.keys(S().nodes)));
-check('a card in the chart leaves the tray', !nodeFor(tray, 'Aldia.png'));
+check('the row is now dimmed in the character list',
+    listRow('Aldia.png').classList.contains('ch-on-chart'));
 
-dragTo(nodeFor(tray, 'Vance.png'), nodeFor(chart, 'Aldia.png'));
-check('dropping a tray card on a chart card nests it',
-    S().nodes['Vance.png']?.parent === 'Aldia.png', JSON.stringify(S().nodes['Vance.png']));
+dragTo(listRow('Vance.png'), nodeFor(chart, K('Aldia.png')));
+check('dropping a list row on a node nests it there',
+    N('Vance.png')?.parent === K('Aldia.png'), JSON.stringify(N('Vance.png')));
 
-dragTo(nodeFor(tray, 'Brant.png'), nodeFor(chart, 'Vance.png'));
-dragTo(nodeFor(tray, 'Mira.png'), nodeFor(chart, 'Vance.png'));
+dragTo(listRow('Brant.png'), nodeFor(chart, K('Vance.png')));
+dragTo(listRow('Mira.png'), nodeFor(chart, K('Vance.png')));
 check('two cards can share a parent',
-    S().nodes['Brant.png'].parent === 'Vance.png' && S().nodes['Mira.png'].parent === 'Vance.png');
+    N('Brant.png').parent === K('Vance.png') && N('Mira.png').parent === K('Vance.png'));
 
-// ---------- T18: layout ----------
+// ---------- T17: layout ----------
 const pos = (avatar) => {
-    const n = nodeFor(chart, avatar);
+    const n = nodeFor(chart, K(avatar));
     return [parseFloat(n.style.left), parseFloat(n.style.top)];
 };
 check('each level sits one row lower',
     pos('Aldia.png')[1] === 0 && pos('Vance.png')[1] === 156 && pos('Brant.png')[1] === 312,
     JSON.stringify([pos('Aldia.png')[1], pos('Vance.png')[1], pos('Brant.png')[1]]));
 check('siblings sit in adjacent columns',
-    Math.abs(pos('Mira.png')[0] - pos('Brant.png')[0]) === 134,
-    String(Math.abs(pos('Mira.png')[0] - pos('Brant.png')[0])));
+    Math.abs(pos('Mira.png')[0] - pos('Brant.png')[0]) === 134);
 check('a parent is centred over its children',
-    pos('Vance.png')[0] === (pos('Brant.png')[0] + pos('Mira.png')[0]) / 2,
-    `${pos('Vance.png')[0]} vs ${(pos('Brant.png')[0] + pos('Mira.png')[0]) / 2}`);
-// Aldia over Vance over {Brant, Mira}: widest leaf at x=134, so 134 + 116 wide and
-// 3 rows + 2 gaps tall, plus 14px of padding on each side.
+    pos('Vance.png')[0] === (pos('Brant.png')[0] + pos('Mira.png')[0]) / 2);
+check('one connector per parent-child link',
+    chart.querySelectorAll('svg.ch-links path.ch-link').length === 3,
+    String(chart.querySelectorAll('svg.ch-links path.ch-link').length));
 check('the chart box includes its own padding, so a small tree never scrolls',
     chart.style.width === '278px' && chart.style.height === '448px',
     `${chart.style.width} x ${chart.style.height}`);
 check('the padding is published to CSS from the one place it is defined',
-    chart.style.getPropertyValue('--ch-pad') === '14px',
-    chart.style.getPropertyValue('--ch-pad'));
+    chart.style.getPropertyValue('--ch-pad') === '14px');
 
-check('one connector per parent-child link',
-    chart.querySelectorAll('svg.ch-links path.ch-link').length === 3,
-    String(chart.querySelectorAll('svg.ch-links path.ch-link').length));
-check('a connector is an elbow from parent bottom to child top',
-    /^M [\d.]+ 108 V 132 H [\d.]+ V 156$/.test(
-        [...chart.querySelectorAll('path.ch-link')].map((p) => p.getAttribute('d'))
-            .find((d) => d.includes('V 156')) ?? ''),
-    [...chart.querySelectorAll('path.ch-link')].map((p) => p.getAttribute('d')).join(' | '));
+// ---------- T18: a drop that would close a loop is refused ----------
+dragTo(nodeFor(chart, K('Aldia.png')), nodeFor(chart, K('Brant.png')));
+check('dropping a node onto its own descendant is refused', N('Aldia.png').parent === null);
+check('the refused drop left the tree untouched', N('Brant.png').parent === K('Vance.png'));
 
-// ---------- T19: a drop that would close a loop is refused ----------
-dragTo(nodeFor(chart, 'Aldia.png'), nodeFor(chart, 'Brant.png'));
-check('dropping a card onto its own descendant is refused',
-    S().nodes['Aldia.png'].parent === null, String(S().nodes['Aldia.png'].parent));
-check('the refused drop left the tree untouched',
-    S().nodes['Brant.png'].parent === 'Vance.png');
+// ---------- T19: taking a node off the chart ----------
+dragTo(nodeFor(chart, K('Mira.png')), document.body);
+check('dragging a node off the chart takes it out of the tree', !N('Mira.png'));
+check('its row stops being dimmed', !listRow('Mira.png').classList.contains('ch-on-chart'));
 
-// ---------- T20: dragging back to the tray ----------
-dragTo(nodeFor(chart, 'Mira.png'), tray);
-check('dropping a card on the tray takes it out of the tree', !S().nodes['Mira.png']);
-check('the card reappears in the tray', !!nodeFor(tray, 'Mira.png'));
+nodeFor(chart, K('Vance.png')).dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true }));
+check('right-clicking a node takes it off the chart', !N('Vance.png'));
+check('its child is lifted to the grandparent', N('Brant.png').parent === K('Aldia.png'));
 
-dragTo(nodeFor(chart, 'Vance.png'), tray);
-check('removing a middle card lifts its child to the grandparent',
-    !S().nodes['Vance.png'] && S().nodes['Brant.png'].parent === 'Aldia.png',
-    JSON.stringify(S().nodes));
-
-// ---------- T21: promoting a nested card to a root ----------
-dragTo(nodeFor(chart, 'Brant.png'), chart);
-check('dropping a nested card on empty chart space promotes it to a root',
-    S().nodes['Brant.png'].parent === null);
-
-// ---------- T22: clicking a card opens the editor under the chart ----------
-check('the editor starts with a hint', editor.textContent.includes('Click a card'));
-clickCard(nodeFor(chart, 'Brant.png'));
-check('clicking a card opens its editor',
+// ---------- T20: the action strip under the selected node ----------
+clickCard(nodeFor(chart, K('Brant.png')));
+check('clicking a node opens its editor',
     editor.querySelector('.ch-editor-name')?.textContent === 'Sir Brant',
     editor.querySelector('.ch-editor-name')?.textContent);
-check('the clicked card is marked selected',
-    nodeFor(chart, 'Brant.png').classList.contains('ch-node-selected'));
-check('the editor offers a role control', !!editor.querySelector('select'));
-check('a click did not move the card', S().nodes['Brant.png'].parent === null);
+check('the clicked node is marked selected',
+    nodeFor(chart, K('Brant.png')).classList.contains('ch-node-selected'));
 
-// ---------- T23: the editor applies live ----------
+let strip = chart.querySelector('.ch-node-actions');
+check('an action strip appears under the selected node', !!strip);
+check('it sits directly below that node',
+    parseFloat(strip.style.top) === pos('Brant.png')[1] + 108,
+    `${strip?.style.top} vs ${pos('Brant.png')[1] + 108}`);
+check('a nested node can be detached from the strip', !!strip.querySelector('.fa-link-slash'));
+
+strip.querySelector('.fa-link-slash').dispatchEvent(new dom.window.Event('click'));
+check('detaching makes it a root', N('Brant.png').parent === null);
+
+strip = chart.querySelector('.ch-node-actions');
+check('a root has no detach button', !strip.querySelector('.fa-link-slash'));
+strip.querySelector('.ch-node-action-remove').dispatchEvent(new dom.window.Event('click'));
+check('the strip can take the node off the chart', !N('Brant.png'));
+check('and the editor empties with it', editor.textContent.includes('Click a node'));
+
+// ---------- T21: the editor applies live ----------
+setTree({ 'Aldia.png': node(null), 'Brant.png': node('Aldia.png') });
+await redraw();
+clickCard(nodeFor(chart, K('Brant.png')));
+
 const roleSelect = editor.querySelectorAll('select')[0];
 roleSelect.value = 'info';
 roleSelect.dispatchEvent(new dom.window.Event('change'));
-check('changing the role in the editor saves immediately', S().nodes['Brant.png'].role === 'info');
-check('the card box reflects the new role',
-    nodeFor(chart, 'Brant.png').classList.contains('ch-node-info')
-    && nodeFor(chart, 'Brant.png').querySelector('.ch-node-role').textContent === 'informational');
-
-const parentSelect = editor.querySelectorAll('select')[1];
-parentSelect.value = 'Aldia.png';
-parentSelect.dispatchEvent(new dom.window.Event('change'));
-check('changing the parent in the editor re-nests the card',
-    S().nodes['Brant.png'].parent === 'Aldia.png');
+check('changing the role in the editor saves immediately', N('Brant.png').role === 'info');
+check('the node box reflects the new role',
+    nodeFor(chart, K('Brant.png')).classList.contains('ch-node-info'));
 
 const booksSelect = editor.querySelector('.ch-books-select');
 [...booksSelect.options].find((o) => o.value === 'Shared Book').selected = true;
 booksSelect.dispatchEvent(new dom.window.Event('change'));
-check('picking a lorebook in the editor saves it to the card',
-    S().nodes['Brant.png'].books.join(',') === 'Shared Book', JSON.stringify(S().nodes['Brant.png'].books));
-check('the card box shows its book count',
-    nodeFor(chart, 'Brant.png').querySelector('.ch-node-books')?.textContent === '1 book');
+check('picking a lorebook in the editor saves it to the node',
+    N('Brant.png').books.join(',') === 'Shared Book');
+check('the node box shows its book count',
+    nodeFor(chart, K('Brant.png')).querySelector('.ch-node-books')?.textContent === '1 book');
+
+// ---------- T22: lorebooks on the chart ----------
+S().nodes = {};
+await redraw();
+await addLorebook('Aldia Lore');
+check('a lorebook can be put on the chart', !!S().nodes['book:Aldia Lore'],
+    JSON.stringify(Object.keys(S().nodes)));
+const bookBox = nodeFor(chart, 'book:Aldia Lore');
+check('a lorebook node is drawn with an icon, not a portrait',
+    !!bookBox?.querySelector('.ch-node-icon') && !bookBox.querySelector('img'));
+check('it is labelled as a lorebook',
+    bookBox.querySelector('.ch-node-role').textContent === 'lorebook');
+check('a lorebook is always a container', S().nodes['book:Aldia Lore'].role === 'info');
+
+dragTo(listRow('Brant.png'), bookBox);
+check('a character can be nested under a lorebook',
+    N('Brant.png').parent === 'book:Aldia Lore');
+
+globalThis.__ctx.characterId = idxOf('Brant.png');
+const underBook = await scan();
+check('the lorebook node feeds its own book to the character below it',
+    underBook.some((e) => e.world === 'Aldia Lore'),
+    JSON.stringify([...new Set(underBook.map((e) => e.world))]));
+
+// ---------- T23: personas on the chart ----------
+await addPersona('me.png');
+check('a persona can be put on the chart', !!S().nodes['persona:me.png']);
+const personaBox = nodeFor(chart, 'persona:me.png');
+check('a persona node shows its name',
+    personaBox.querySelector('.ch-node-name').textContent === 'Traveller');
+check('it is labelled as a persona',
+    personaBox.querySelector('.ch-node-role').textContent === 'persona');
+
+parentCmd2.callback({ char: 'Sir Brant' }, ''); // detach Brant from the lorebook
+S().nodes[K('Brant.png')].parent = 'persona:me.png';
+S().nodes['persona:me.png'].includeCardText = true;
+await redraw();
+
+const underPersona = await scan();
+check('a persona hands down its own lorebook',
+    underPersona.some((e) => e.world === 'Shared Book'),
+    JSON.stringify([...new Set(underPersona.map((e) => e.world))]));
+check('a persona can inject its description',
+    underPersona.some((e) => e.world.startsWith('Hierarchy:') && e.content.includes('A wanderer.')),
+    JSON.stringify(underPersona.filter((e) => e.world.startsWith('Hierarchy:')).map((e) => e.content)));
 
 // ---------- T24: the editor explains inheritance both ways ----------
-S().nodes = {
-    'Aldia.png': node(null, { role: 'info', books: ['Shared Book'] }),
-    'Brant.png': node('Aldia.png'),
-};
-await redraw();
-parentCmd2.callback({ char: 'Sir Brant' }, 'Kingdom of Aldia'); // re-nests and redraws
-clickCard(nodeFor(chart, 'Brant.png'));
-await new Promise((resolve) => setTimeout(resolve, 0)); // the read-outs fill in asynchronously
-check('the editor lists what the card inherits from above',
+clickCard(nodeFor(chart, K('Brant.png')));
+await new Promise((resolve) => setTimeout(resolve, 0));
+check('the editor lists what the node inherits from above',
     [...editor.querySelectorAll('.ch-inherited-book')].map((e) => e.textContent).includes('Shared Book'),
     [...editor.querySelectorAll('.ch-inherited-book')].map((e) => e.textContent).join(','));
-check('the inherited row names the card it came from',
-    editor.querySelector('.ch-inherited-from')?.textContent.includes('Kingdom of Aldia'),
-    editor.querySelector('.ch-inherited-from')?.textContent);
 
-clickCard(nodeFor(chart, 'Aldia.png'));
+clickCard(nodeFor(chart, 'persona:me.png'));
 await new Promise((resolve) => setTimeout(resolve, 0));
-check('the editor states which books the card passes down to its children',
-    // Aldia Lore is the card's own "Character Lore"; Shared Book is attached here.
-    editor.textContent.includes('Everything nested under this card inherits: Aldia Lore, Shared Book'),
+check('the editor states what the node passes down',
+    editor.textContent.includes('Everything nested under this inherits: Shared Book'),
     [...editor.querySelectorAll('.ch-hint')].map((e) => e.textContent).join(' // '));
+check('a persona has no role to choose',
+    editor.querySelector('select[disabled], input[disabled]')?.value?.includes('Persona') === true,
+    editor.querySelector('input[disabled]')?.value);
 
-// ---------- T25: a parent's own books really do reach the children ----------
-globalThis.__ctx.characterId = idxOf('Brant.png');
-const inheritedEntries = await scan();
-check('a book attached to the parent card is scanned for the child',
-    inheritedEntries.some((e) => e.world === 'Shared Book'),
-    JSON.stringify([...new Set(inheritedEntries.map((e) => e.world))]));
+// ---------- T25: a node whose target is gone ----------
+S().nodes['book:No Such Book'] = node(null);
+await redraw();
+check('a missing lorebook is still shown',
+    nodeFor(chart, 'book:No Such Book')?.classList.contains('ch-node-missing'));
+check('a missing node does not break the scan', Array.isArray(await scan()));
+delete S().nodes['book:No Such Book'];
 
-// ---------- T26: a card that is no longer installed ----------
-S().nodes['Ghost.png'] = node(null);
-parentCmd2.callback({ char: 'Sir Brant' }, 'Kingdom of Aldia');
-check('a missing card is still shown in the chart',
-    nodeFor(chart, 'Ghost.png')?.classList.contains('ch-node-missing'));
-check('a missing card does not break the scan', Array.isArray(await scan()));
-delete S().nodes['Ghost.png'];
+// ---------- T26: the pre-types shape is migrated ----------
+S().nodes = { 'Brant.png': { parent: 'Vance.png', role: 'actor', books: [], includeCardText: false },
+    'Vance.png': { parent: null, role: 'info', books: ['Shared Book'], includeCardText: false } };
+await redraw();
+check('old bare-avatar keys are rewritten as character keys',
+    !!N('Brant.png') && !!N('Vance.png') && !S().nodes['Brant.png'],
+    JSON.stringify(Object.keys(S().nodes)));
+check('old parent links are rewritten too', N('Brant.png').parent === K('Vance.png'));
+check('the migrated tree still inherits',
+    (await scan()).some((e) => e.world === 'Shared Book'));
 
 // ---------- T27: export round-trips ----------
-S().nodes = {
-    'Brant.png': node('Vance.png'),
-    'Vance.png': node(null, { role: 'info', books: ['Shared Book'] }),
-};
 document.getElementById('ch_export').dispatchEvent(new dom.window.Event('click'));
 const exported = JSON.parse(globalThis.__downloaded.content);
-check('export captures the tree',
-    exported.nodes['Brant.png'].parent === 'Vance.png'
-    && exported.nodes['Vance.png'].role === 'info'
-    && exported.nodes['Vance.png'].books[0] === 'Shared Book',
+check('export captures the typed tree',
+    exported.nodes[K('Brant.png')].parent === K('Vance.png')
+    && exported.nodes[K('Vance.png')].books[0] === 'Shared Book',
     globalThis.__downloaded.content);
 
 // ---------- T28: the master switch ----------
 S().enabled = false;
 check('the master switch stops all injection', (await scan()).length === 0);
 S().enabled = true;
-
-// ---------- T29: the character panel button opens the panel on that card ----------
-S().nodes = { 'Vance.png': node(null), 'Brant.png': node('Vance.png') };
-
-// Close the drawer so the character panel button has to reopen it.
-drawerButton.querySelector('.drawer-toggle').dispatchEvent(new dom.window.Event('click'));
-check('the drawer can be closed again', drawerContent.classList.contains('closedDrawer'));
-
-globalThis.__ctx.characterId = idxOf('Brant.png');
-document.getElementById('character_hierarchy_button').dispatchEvent(new dom.window.Event('click'));
-check('the character panel button reopens the drawer', drawerContent.classList.contains('openDrawer'));
-check('it selects the open character',
-    editor.querySelector('.ch-editor-name')?.textContent === 'Sir Brant',
-    editor.querySelector('.ch-editor-name')?.textContent);
 
 // ---------- T30: the tri-state character list filter ----------
 const { entitiesFilter } = await import(path.join(TMP, 'public/script.js'));
@@ -588,7 +637,7 @@ check('it starts in the off state',
     filterButton.dataset.toggleState);
 
 // the tree for the filter checks: Vance and Brant are nested, Mira and Aldia are not
-S().nodes = { 'Vance.png': node(null), 'Brant.png': node('Vance.png') };
+setTree({ 'Vance.png': node(null), 'Brant.png': node('Vance.png') });
 const entities = CHARACTERS.map((c, id) => ({ item: c, id, type: 'character' }));
 entities.push({ item: { name: 'a folder' }, id: 'f', type: 'tag' });
 const visible = () => entitiesFilter.applyFilters(entities)

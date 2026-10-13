@@ -6,27 +6,23 @@
             <span data-i18n="Inheritance on">Inheritance on</span>
         </label>
         <span class="expander"></span>
-        <div id="ch_preview" class="menu_button fa-solid fa-magnifying-glass" title="Preview what the selected card inherits"></div>
+        <div id="ch_add_book" class="menu_button fa-solid fa-book-atlas" title="Put a lorebook on the chart"></div>
+        <div id="ch_add_persona" class="menu_button fa-solid fa-user" title="Put a persona on the chart"></div>
+        <div id="ch_preview" class="menu_button fa-solid fa-magnifying-glass" title="Preview what the selected node inherits"></div>
         <div id="ch_export" class="menu_button fa-solid fa-file-export" title="Export the tree as JSON"></div>
         <div id="ch_import" class="menu_button fa-solid fa-file-import" title="Import a tree from JSON"></div>
         <input type="file" id="ch_import_file" accept=".json" hidden>
     </div>
 
     <div class="ch-hint">
-        Drag a card onto another to nest it, onto empty chart space to make it a root, or back to
-        the tray to take it out. Click a card to set its role and the lorebooks it passes down.
+        Drag a character in from the list on the right to add it. Drag a node onto another to nest
+        it, onto empty chart space to make it a root, or anywhere off the chart to take it out —
+        right-clicking does the same. Click a node to set what it passes down.
     </div>
 
     <div class="ch-workspace">
         <div class="ch-chart-pane">
             <div id="ch_chart" class="ch-chart"></div>
-        </div>
-        <div class="ch-tray-pane">
-            <div class="ch-tray-head">
-                <span data-i18n="Not in a tree">Not in a tree</span> (<span id="ch_tray_count">0</span>)
-            </div>
-            <input type="search" id="ch_tray_filter" class="text_pole ch-tray-filter" placeholder="Filter cards…">
-            <div id="ch_tray" class="ch-tray"></div>
         </div>
     </div>
 

@@ -1,40 +1,40 @@
 {
     "format": "sillytavern-character-hierarchy",
     "version": 1,
-    "exportedAt": "2026-10-13T00:20:06.557Z",
+    "exportedAt": "2026-10-13T02:54:52.320Z",
     "nodes": {
-        "Earth.png": {
+        "char:Earth.png": {
             "parent": null,
             "role": "info",
             "books": [],
             "includeCardText": true
         },
-        "North America.png": {
-            "parent": "Earth.png",
+        "char:North America.png": {
+            "parent": "char:Earth.png",
             "role": "info",
             "books": [],
             "includeCardText": true
         },
-        "USA.png": {
-            "parent": "North America.png",
+        "char:USA.png": {
+            "parent": "char:North America.png",
             "role": "info",
             "books": [],
             "includeCardText": true
         },
-        "Peter.png": {
-            "parent": "USA.png",
+        "char:Peter.png": {
+            "parent": "char:USA.png",
             "role": "actor",
             "books": [],
             "includeCardText": false
         },
-        "Paul.png": {
-            "parent": "USA.png",
+        "char:Paul.png": {
+            "parent": "char:USA.png",
             "role": "actor",
             "books": [],
             "includeCardText": false
         },
-        "Mary.png": {
-            "parent": "USA.png",
+        "char:Mary.png": {
+            "parent": "char:USA.png",
             "role": "actor",
             "books": [],
             "includeCardText": false
