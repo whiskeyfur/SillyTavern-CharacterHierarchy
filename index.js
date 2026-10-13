@@ -33,9 +33,11 @@ import {
     METADATA_KEY,
     loadWorldInfo,
     newWorldInfoEntryTemplate,
+    openWorldInfoEditor,
     selected_world_info,
     world_info,
 } from '../../../world-info.js';
+import { getUserAvatars } from '../../../personas.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
 import { download, getCharaFilename, getFileText } from '../../../utils.js';
 import { doNavbarIconClick, entitiesFilter } from '../../../../script.js';
@@ -59,6 +61,53 @@ const FILTER_STATE_KEYS = Object.keys(FILTER_STATES);
 
 const ROLE = Object.freeze({ ACTOR: 'actor', INFO: 'info' });
 const SCOPE = Object.freeze({ SPEAKER: 'speaker', ALL_MEMBERS: 'allMembers' });
+
+/**
+ * What can sit on the chart. Character cards were the only kind at first, so a node used to
+ * be keyed by bare avatar file name; keys are now `type:id` and the old shape is migrated.
+ */
+const NODE_TYPES = Object.freeze({
+    CHARACTER: 'char',
+    BOOK: 'book',
+    PERSONA: 'persona',
+});
+
+/** @type {readonly string[]} */
+const NODE_TYPE_VALUES = Object.freeze(Object.values(NODE_TYPES));
+
+/**
+ * @param {string} type One of NODE_TYPES.
+ * @param {string} id Avatar file name, lorebook name, or persona avatar id.
+ * @returns {string} The node key.
+ */
+function makeKey(type, id) {
+    return `${type}:${id}`;
+}
+
+/**
+ * Splits a node key. Ids may themselves contain a colon, so only the first one counts.
+ * @param {string} key The node key.
+ * @returns {{type: string, id: string}} Its parts.
+ */
+function parseKey(key) {
+    const text = String(key ?? '');
+    const colon = text.indexOf(':');
+    const type = colon === -1 ? '' : text.slice(0, colon);
+
+    if (!NODE_TYPE_VALUES.includes(type)) {
+        // Keys written before nodes had types were bare avatar file names.
+        return { type: NODE_TYPES.CHARACTER, id: text };
+    }
+
+    return { type, id: text.slice(colon + 1) };
+}
+
+const keyType = (key) => parseKey(key).type;
+const keyId = (key) => parseKey(key).id;
+const charKey = (avatar) => makeKey(NODE_TYPES.CHARACTER, avatar);
+
+/** Only character cards ever speak; everything else is a container. */
+const isContainerType = (type) => type !== NODE_TYPES.CHARACTER;
 
 /** Resolved at runtime so the extension keeps working whatever the clone folder is called. */
 const EXTENSION_PATH = (() => {
@@ -100,6 +149,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     maxDepth: 16,
     orderPenaltyPerLevel: 0,
     listFilterState: DEFAULT_FILTER_STATE,
+    focusLineage: false,
     debug: false,
 });
 
@@ -137,29 +187,34 @@ function save() {
 }
 
 /**
- * @param {string} avatar Avatar file name, e.g. `Seraphina.png`.
- * @returns {object|null} The node, or null if the card is not part of the tree.
+ * @param {string} key The node key.
+ * @returns {object|null} The node, or null if it is not part of the tree.
  */
-function getNode(avatar) {
-    if (!avatar) {
+function getNode(key) {
+    if (!key) {
         return null;
     }
-    const node = settings().nodes[avatar];
+    const node = settings().nodes[key];
     return node && typeof node === 'object' ? node : null;
 }
 
 /**
- * Returns the node for a card, creating a default one if needed.
- * @param {string} avatar Avatar file name.
+ * Returns the node for a key, creating a default one if needed.
+ * @param {string} key The node key.
  * @returns {object} The node.
  */
-function ensureNode(avatar) {
+function ensureNode(key) {
     const store = settings();
-    if (!store.nodes[avatar] || typeof store.nodes[avatar] !== 'object') {
-        store.nodes[avatar] = structuredClone(DEFAULT_NODE);
+    if (!store.nodes[key] || typeof store.nodes[key] !== 'object') {
+        store.nodes[key] = structuredClone(DEFAULT_NODE);
     }
-    const node = store.nodes[avatar];
-    if (node.role !== ROLE.INFO) {
+
+    const node = store.nodes[key];
+
+    // Only character cards can act; a lorebook or a persona is always just a container.
+    if (isContainerType(keyType(key))) {
+        node.role = ROLE.INFO;
+    } else if (node.role !== ROLE.INFO) {
         node.role = ROLE.ACTOR;
     }
     if (typeof node.parent !== 'string' || !node.parent) {
@@ -176,10 +231,10 @@ const getParent = (avatar) => getNode(avatar)?.parent || null;
 const getRole = (avatar) => (getNode(avatar)?.role === ROLE.INFO ? ROLE.INFO : ROLE.ACTOR);
 const isInfo = (avatar) => getRole(avatar) === ROLE.INFO;
 
-/** @returns {string[]} Avatars whose parent is the given avatar. */
-function getChildren(avatar) {
+/** @returns {string[]} The keys whose parent is the given key. */
+function getChildren(parentKey) {
     const nodes = settings().nodes;
-    return Object.keys(nodes).filter((key) => (getParent(key) ?? null) === (avatar ?? null));
+    return Object.keys(nodes).filter((key) => (getParent(key) ?? null) === (parentKey ?? null));
 }
 
 /**
@@ -208,15 +263,15 @@ function wouldCreateCycle(child, parent) {
 }
 
 /**
- * Walks up the tree from a card.
- * @param {string} avatar Starting avatar.
+ * Walks up the tree from a node.
+ * @param {string} key Starting node key.
  * @param {number} maxDepth How many levels to climb at most.
- * @returns {{avatar: string, depth: number}[]} Ancestors, nearest first.
+ * @returns {{key: string, depth: number}[]} Ancestors, nearest first.
  */
-function getAncestors(avatar, maxDepth) {
+function getAncestors(key, maxDepth) {
     const chain = [];
-    const seen = new Set([avatar]);
-    let current = avatar;
+    const seen = new Set([key]);
+    let current = key;
 
     for (let depth = 1; depth <= maxDepth; depth++) {
         const parent = getParent(current);
@@ -224,11 +279,79 @@ function getAncestors(avatar, maxDepth) {
             break;
         }
         seen.add(parent);
-        chain.push({ avatar: parent, depth });
+        chain.push({ key: parent, depth });
         current = parent;
     }
 
     return chain;
+}
+
+/**
+ * Rewrites the pre-types shape, where a node was keyed by bare avatar file name, into typed
+ * keys. Runs over both the keys and the parent links so the two stay consistent.
+ * @returns {boolean} True if anything was rewritten.
+ */
+function migrateNodeKeys() {
+    const store = settings();
+    const isTyped = (key) => NODE_TYPE_VALUES.some((type) => String(key).startsWith(`${type}:`));
+
+    if (Object.keys(store.nodes).every(isTyped)) {
+        return false;
+    }
+
+    /** @type {Record<string, object>} */
+    const migrated = {};
+
+    for (const [key, node] of Object.entries(store.nodes)) {
+        const newKey = isTyped(key) ? key : charKey(key);
+        const parent = node?.parent;
+        migrated[newKey] = {
+            ...node,
+            parent: parent && !isTyped(parent) ? charKey(parent) : (parent ?? null),
+        };
+    }
+
+    store.nodes = migrated;
+    console.log(`${LOG} migrated ${Object.keys(migrated).length} nodes to typed keys`);
+    return true;
+}
+
+/**
+ * Everything nested under a node, however deep.
+ * @param {string} key The node key.
+ * @returns {Set<string>} Descendant keys, not including the node itself.
+ */
+function getDescendants(key) {
+    const found = new Set();
+    const stack = [key];
+
+    while (stack.length) {
+        for (const child of getChildren(stack.pop())) {
+            // The guard also stops a loop that normalizeNodes has not reached yet.
+            if (!found.has(child)) {
+                found.add(child);
+                stack.push(child);
+            }
+        }
+    }
+
+    return found;
+}
+
+/**
+ * One node's whole line: itself, everything above it, and everything below it.
+ * @param {string} key The node key.
+ * @returns {Set<string>} The lineage.
+ */
+function lineageOf(key) {
+    const maxDepth = Math.max(1, Number(settings().maxDepth) || 1);
+    const lineage = new Set([key, ...getDescendants(key)]);
+
+    for (const ancestor of getAncestors(key, maxDepth)) {
+        lineage.add(ancestor.key);
+    }
+
+    return lineage;
 }
 
 /**
@@ -238,7 +361,7 @@ function getAncestors(avatar, maxDepth) {
  */
 function normalizeNodes() {
     const store = settings();
-    let changed = false;
+    let changed = migrateNodeKeys();
 
     for (const avatar of Object.keys(store.nodes)) {
         const before = JSON.stringify(store.nodes[avatar]);
@@ -334,13 +457,127 @@ function indexByAvatar() {
 }
 
 /**
- * @param {string} avatar Avatar file name.
+ * @param {string} key The node key.
  * @param {Map<string, number>} [indexes] A prebuilt avatar index, for callers in a loop.
- * @returns {string} A display name, falling back to the file name for deleted cards.
+ * @returns {string} A display name, falling back to the id for things no longer installed.
  */
-function displayName(avatar, indexes = indexByAvatar()) {
-    const character = getContext().characters?.[indexes.get(avatar)];
-    return character?.name || getCharaFilename(null, { manualAvatarKey: avatar }) || avatar;
+function displayName(key, indexes = indexByAvatar()) {
+    const { type, id } = parseKey(key);
+
+    switch (type) {
+        case NODE_TYPES.BOOK:
+            return id;
+        case NODE_TYPES.PERSONA:
+            return personaName(id) || id;
+        default: {
+            const character = getContext().characters?.[indexes.get(id)];
+            return character?.name || getCharaFilename(null, { manualAvatarKey: id }) || id;
+        }
+    }
+}
+
+/** @returns {Record<string, string>} Persona avatar id to name. */
+function allPersonas() {
+    const personas = getContext().powerUserSettings?.personas;
+    return /** @type {Record<string, string>} */ (
+        personas && typeof personas === 'object' ? personas : {});
+}
+
+/**
+ * @param {string} id Persona avatar id.
+ * @returns {string} The persona's name, or an empty string.
+ */
+function personaName(id) {
+    return allPersonas()[id] ?? '';
+}
+
+/**
+ * @param {string} id Persona avatar id.
+ * @returns {{description?: string, lorebook?: string, title?: string}} Its description record.
+ */
+function personaRecord(id) {
+    const descriptions = getContext().powerUserSettings?.persona_descriptions;
+    const record = descriptions && typeof descriptions === 'object' ? descriptions[id] : null;
+    return record && typeof record === 'object' ? record : {};
+}
+
+/**
+ * Whether the thing a node points at still exists.
+ * @param {string} key The node key.
+ * @returns {boolean} True if it is installed.
+ */
+function nodeExists(key) {
+    const { type, id } = parseKey(key);
+
+    switch (type) {
+        case NODE_TYPES.BOOK:
+            return (getContext().getWorldInfoNames?.() ?? []).includes(id);
+        case NODE_TYPES.PERSONA:
+            return Object.hasOwn(allPersonas(), id);
+        default:
+            return indexByAvatar().has(id);
+    }
+}
+
+/**
+ * The picture to show on a node, if it has one.
+ * @param {string} key The node key.
+ * @returns {string|null} A thumbnail URL, or null for nodes drawn as an icon.
+ */
+function nodeThumbnail(key) {
+    const context = getContext();
+    const { type, id } = parseKey(key);
+
+    if (type === NODE_TYPES.CHARACTER) {
+        return indexByAvatar().has(id) ? context.getThumbnailUrl('avatar', id) : null;
+    }
+    if (type === NODE_TYPES.PERSONA) {
+        return Object.hasOwn(allPersonas(), id) ? context.getThumbnailUrl('persona', id) : null;
+    }
+    return null;
+}
+
+/**
+ * Every lorebook a node offers to the things nested under it.
+ *
+ * "Intrinsic" means the books the node is made of: a card's own Character Lore and linked
+ * extras, the lorebook a lorebook node *is*, or the book attached to a persona. "Attached"
+ * means the extra books pinned to the node inside this extension.
+ *
+ * @param {string} key The node key.
+ * @param {{intrinsic?: boolean, attached?: boolean}} [what] Which of the two to include.
+ * @returns {Promise<string[]>} Book names, deduplicated.
+ */
+async function nodeBooks(key, { intrinsic = true, attached = true } = {}) {
+    const store = settings();
+    const { type, id } = parseKey(key);
+    const books = [];
+
+    if (intrinsic) {
+        switch (type) {
+            case NODE_TYPES.BOOK:
+                books.push(id);
+                break;
+            case NODE_TYPES.PERSONA:
+                books.push(personaRecord(id).lorebook);
+                break;
+            default: {
+                const index = indexByAvatar().get(id);
+                if (store.inheritPrimaryBook && index !== undefined) {
+                    books.push(await primaryBook(index));
+                }
+                if (store.inheritAuxBooks) {
+                    books.push(...auxBooks(id));
+                }
+            }
+        }
+    }
+
+    if (attached) {
+        books.push(...(getNode(key)?.books ?? []));
+    }
+
+    return [...new Set(books.filter((book) => typeof book === 'string' && book))];
 }
 
 /**
@@ -456,13 +693,15 @@ function buildPlan(context, speakerOverride = null) {
         plan.set(avatar, { depth, loadCard });
     };
 
-    const speaker = speakerOverride ?? context.characters?.[context.characterId]?.avatar ?? null;
+    // Only character cards ever speak, so the seeds are always character keys.
+    const speakerAvatar = speakerOverride ?? context.characters?.[context.characterId]?.avatar ?? null;
+    const speaker = speakerAvatar ? charKey(speakerAvatar) : null;
 
-    /** @type {{avatar: string, loadCard: boolean}[]} */
+    /** @type {{key: string, loadCard: boolean}[]} */
     const roots = [];
 
     if (speaker) {
-        roots.push({ avatar: speaker, loadCard: false });
+        roots.push({ key: speaker, loadCard: false });
     }
 
     const group = context.groupId
@@ -471,21 +710,21 @@ function buildPlan(context, speakerOverride = null) {
 
     if (group) {
         for (const member of Array.isArray(group.members) ? group.members : []) {
-            if (!member || member === speaker) {
+            if (!member || member === speakerAvatar) {
                 continue;
             }
             const wanted = store.ancestorScope === SCOPE.ALL_MEMBERS
-                || (store.includeInfoMembers && isInfo(member));
+                || (store.includeInfoMembers && isInfo(charKey(member)));
             if (wanted) {
-                roots.push({ avatar: member, loadCard: true });
+                roots.push({ key: charKey(member), loadCard: true });
             }
         }
     }
 
     for (const root of roots) {
-        add(root.avatar, 0, root.loadCard);
-        for (const ancestor of getAncestors(root.avatar, maxDepth)) {
-            add(ancestor.avatar, ancestor.depth, true);
+        add(root.key, 0, root.loadCard);
+        for (const ancestor of getAncestors(root.key, maxDepth)) {
+            add(ancestor.key, ancestor.depth, true);
         }
     }
 
@@ -508,48 +747,32 @@ async function resolve(context, speakerOverride = null) {
 
     // The speaker's own card books are loaded by getCharacterLore() already.
     if (speaker) {
-        const speakerIndex = indexes.get(speaker);
-        const speakerPrimary = await primaryBook(speakerIndex);
+        const speakerAvatar = keyId(speaker);
+        const speakerPrimary = await primaryBook(indexes.get(speakerAvatar));
         if (speakerPrimary) {
             excluded.add(speakerPrimary);
         }
-        for (const book of auxBooks(speaker)) {
+        for (const book of auxBooks(speakerAvatar)) {
             excluded.add(book);
         }
     }
 
     /** @type {Map<string, {depth: number, sources: string[]}>} */
     const books = new Map();
-    /** @type {{avatar: string, index: number, depth: number}[]} */
+    /** @type {{key: string, depth: number}[]} */
     const cardTextTargets = [];
 
     const ordered = [...plan.entries()].sort((a, b) => a[1].depth - b[1].depth);
 
-    for (const [avatar, info] of ordered) {
-        const index = indexes.get(avatar);
-        const node = getNode(avatar);
-        const name = displayName(avatar, indexes);
+    for (const [key, info] of ordered) {
+        const node = getNode(key);
+        const name = displayName(key, indexes);
 
-        /** @type {string[]} */
-        const candidates = [];
-
-        if (info.loadCard && index !== undefined) {
-            if (store.inheritPrimaryBook) {
-                const book = await primaryBook(index);
-                if (book) {
-                    candidates.push(book);
-                }
-            }
-            if (store.inheritAuxBooks) {
-                candidates.push(...auxBooks(avatar));
-            }
-        }
-
-        const nodeBooks = Array.isArray(node?.books) ? node.books : [];
-        const wantNodeBooks = info.depth === 0 ? store.includeSelfNodeBooks : store.inheritNodeBooks;
-        if (nodeBooks.length && wantNodeBooks) {
-            candidates.push(...nodeBooks);
-        }
+        const candidates = await nodeBooks(key, {
+            // At depth 0 the speaker's own books are already in SillyTavern's hands.
+            intrinsic: info.loadCard,
+            attached: info.depth === 0 ? store.includeSelfNodeBooks : store.inheritNodeBooks,
+        });
 
         for (const book of candidates) {
             if (!book) {
@@ -570,8 +793,8 @@ async function resolve(context, speakerOverride = null) {
             books.set(book, { depth: info.depth, sources: [name] });
         }
 
-        if (store.injectCardText && info.loadCard && node?.includeCardText && index !== undefined) {
-            cardTextTargets.push({ avatar, index, depth: info.depth });
+        if (store.injectCardText && info.loadCard && node?.includeCardText && nodeExists(key)) {
+            cardTextTargets.push({ key, depth: info.depth });
         }
     }
 
@@ -607,7 +830,7 @@ async function resolve(context, speakerOverride = null) {
         const entry = await buildCardTextEntry(target);
         if (entry) {
             entries.push(entry);
-            cardTextEntries.push({ avatar: target.avatar, depth: target.depth, length: entry.content.length });
+            cardTextEntries.push({ key: target.key, depth: target.depth, length: entry.content.length });
         }
     }
 
@@ -632,46 +855,90 @@ function applyTemplate(template, fields) {
 }
 
 /**
- * Builds a synthetic world info entry out of an informational card's own text.
- *
- * The entry's order and content are kept independent of tree depth so that its hash — which
- * SillyTavern uses to track sticky and cooldown timers — stays stable from turn to turn.
- *
- * @param {{avatar: string, index: number, depth: number}} target Card to render.
- * @returns {Promise<object|null>} The entry, or null if the card has no text.
+ * The text fields a node can lend to the template, and the name to file the entry under.
+ * A lorebook node has no text of its own: it is already a lorebook.
+ * @param {string} key The node key.
+ * @returns {Promise<{name: string, fields: Record<string, string>}|null>} Its text, or null.
  */
-async function buildCardTextEntry(target) {
-    const store = settings();
-    const character = await unshallow(target.index);
+async function nodeText(key) {
+    const { type, id } = parseKey(key);
+
+    if (type === NODE_TYPES.BOOK) {
+        return null;
+    }
+
+    if (type === NODE_TYPES.PERSONA) {
+        const name = personaName(id);
+        const record = personaRecord(id);
+        return {
+            name: name || id,
+            fields: {
+                name: name ?? '',
+                description: record.description ?? '',
+                personality: '',
+                scenario: '',
+                mesExamples: '',
+                creatorNotes: record.title ?? '',
+            },
+        };
+    }
+
+    const character = await unshallow(indexByAvatar().get(id));
 
     if (!character) {
         return null;
     }
 
-    const content = applyTemplate(store.cardTextTemplate, {
-        name: character.name ?? '',
-        description: character.description ?? '',
-        personality: character.personality ?? '',
-        scenario: character.scenario ?? '',
-        mesExamples: character.mes_example ?? '',
-        creatorNotes: character.data?.creator_notes ?? character.creatorcomment ?? '',
-    }).trim();
+    return {
+        name: character.name || id,
+        fields: {
+            name: character.name ?? '',
+            description: character.description ?? '',
+            personality: character.personality ?? '',
+            scenario: character.scenario ?? '',
+            mesExamples: character.mes_example ?? '',
+            creatorNotes: character.data?.creator_notes ?? character.creatorcomment ?? '',
+        },
+    };
+}
+
+/**
+ * Builds a synthetic world info entry out of a node's own text.
+ *
+ * The entry's order and content are kept independent of tree depth so that its hash — which
+ * SillyTavern uses to track sticky and cooldown timers — stays stable from turn to turn.
+ *
+ * @param {{key: string, depth: number}} target Node to render.
+ * @returns {Promise<object|null>} The entry, or null if there is no text to inject.
+ */
+async function buildCardTextEntry(target) {
+    const store = settings();
+    const text = await nodeText(target.key);
+
+    if (!text) {
+        return null;
+    }
+
+    const content = applyTemplate(store.cardTextTemplate, text.fields).trim();
 
     if (!content) {
         return null;
     }
 
-    const key = getCharaFilename(null, { manualAvatarKey: target.avatar }) || character.name;
+    const { type, id } = parseKey(target.key);
+    const label = type === NODE_TYPES.CHARACTER
+        ? (getCharaFilename(null, { manualAvatarKey: id }) || text.name)
+        : `${type}/${id}`;
     const constant = Boolean(store.cardTextConstant);
 
     return {
         ...structuredClone(newWorldInfoEntryTemplate),
         uid: 0,
-        world: `Hierarchy: ${key}`,
-        comment: `${character.name} (hierarchy card text)`,
+        world: `Hierarchy: ${label}`,
+        comment: `${text.name} (hierarchy card text)`,
         content,
         constant,
-        key: constant ? [] : [character.name].filter(Boolean),
+        key: constant ? [] : [text.name].filter(Boolean),
         order: Number(store.cardTextOrder) || 100,
         position: Number(store.cardTextPosition) || 0,
         depth: Number(store.cardTextDepthValue) || 4,
@@ -732,14 +999,22 @@ const CHART_PADDING = 14;
 /** How far the pointer must travel before a click becomes a drag. */
 const DRAG_THRESHOLD = 4;
 
-/** The card whose settings the panel under the chart is showing. */
-let selectedAvatar = null;
+/** SillyTavern's own character list, which doubles as the source of new cards. */
+const CHARACTER_LIST = '#rm_print_characters_block';
+
+/** The drawer that list lives in. */
+const CHARACTER_PANEL = Object.freeze({
+    toggle: '#rightNavHolder .drawer-toggle',
+    content: '#right-nav-panel',
+    icon: '#rightNavDrawerIcon',
+    lock: '#rm_button_panel_pin',
+});
+
+/** The node whose settings the panel under the chart is showing. */
+let selectedKey = null;
 
 /** Live drag state, or null when nothing is being dragged. */
 let dragState = null;
-
-/** Set while the panel is hidden, so it repaints when it next opens. */
-let uiDirty = true;
 
 function el(tag, props = {}, children = []) {
     const node = Object.assign(document.createElement(tag), props);
@@ -781,9 +1056,38 @@ function field(text, control, hint) {
  *
  * @returns {{positions: Map<string, {x: number, y: number, depth: number}>, width: number, height: number}}
  */
+/**
+ * The nodes the chart should draw.
+ *
+ * Normally everything. With focus on, just one line: the anchor, everything above it and
+ * everything below it — so other roots and the ancestors' other branches drop away.
+ *
+ * @returns {{keys: Set<string>|null, anchor: string|null}} Null keys means draw everything.
+ */
+function focusedKeys() {
+    const store = settings();
+
+    if (!store.focusLineage) {
+        return { keys: null, anchor: null };
+    }
+
+    // Anchor on the selected node, or failing that on whoever is currently open.
+    const context = getContext();
+    const openAvatar = context.characters?.[context.characterId]?.avatar;
+    const anchor = [selectedKey, openAvatar ? charKey(openAvatar) : null]
+        .find((candidate) => candidate && getNode(candidate)) ?? null;
+
+    if (!anchor) {
+        return { keys: null, anchor: null };
+    }
+
+    return { keys: lineageOf(anchor), anchor };
+}
+
 function layoutForest() {
     const store = settings();
     const indexes = indexByAvatar();
+    const { keys: visible } = focusedKeys();
     const byName = (a, b) => displayName(a, indexes).localeCompare(displayName(b, indexes));
 
     /** @type {Map<string, {x: number, y: number, depth: number}>} */
@@ -792,15 +1096,15 @@ function layoutForest() {
     let column = 0;
     let deepest = 0;
 
-    const place = (avatar, depth) => {
-        if (seen.has(avatar)) {
+    const place = (key, depth) => {
+        if (seen.has(key)) {
             return null;
         }
-        seen.add(avatar);
+        seen.add(key);
         deepest = Math.max(deepest, depth);
 
         const childCentres = [];
-        for (const child of getChildren(avatar).sort(byName)) {
+        for (const child of getChildren(key).filter(isShown).sort(byName)) {
             const centre = place(child, depth + 1);
             if (centre !== null) {
                 childCentres.push(centre);
@@ -815,19 +1119,22 @@ function layoutForest() {
             column += NODE_WIDTH + COLUMN_GAP;
         }
 
-        positions.set(avatar, { x, y: depth * (NODE_HEIGHT + ROW_GAP), depth });
+        positions.set(key, { x, y: depth * (NODE_HEIGHT + ROW_GAP), depth });
         return x;
     };
 
-    const avatars = Object.keys(store.nodes);
+    const keys = Object.keys(store.nodes).filter((key) => !visible || visible.has(key));
+    const shown = new Set(keys);
+    const isShown = (key) => shown.has(key);
 
-    for (const root of avatars.filter((avatar) => !getParent(avatar)).sort(byName)) {
+    // A node whose parent is hidden becomes a root of what is drawn.
+    for (const root of keys.filter((key) => !getParent(key) || !isShown(getParent(key))).sort(byName)) {
         place(root, 0);
         column += ROOT_GAP;
     }
 
     // Anything still unplaced sat in a loop normalizeNodes could not untangle. Show it anyway.
-    for (const stray of avatars.filter((avatar) => !seen.has(avatar)).sort(byName)) {
+    for (const stray of keys.filter((key) => !seen.has(key)).sort(byName)) {
         place(stray, 0);
         column += ROOT_GAP;
     }
@@ -846,20 +1153,27 @@ function layoutForest() {
 
 // ---------------------------------------------------------------- cards
 
+/** Font Awesome icons standing in for the things that have no portrait. */
+const NODE_ICONS = Object.freeze({
+    [NODE_TYPES.BOOK]: 'fa-book-atlas',
+    [NODE_TYPES.PERSONA]: 'fa-user',
+    [NODE_TYPES.CHARACTER]: 'fa-user-astronaut',
+});
+
 /**
- * One card box, draggable, usable in the chart or the tray.
- * @param {string} avatar Avatar file name.
+ * One node box on the chart.
+ * @param {string} key The node key.
  * @param {Map<string, number>} indexes Prebuilt avatar index.
  * @returns {HTMLElement} The box.
  */
-function buildCardBox(avatar, indexes) {
-    const context = getContext();
-    const index = indexes.get(avatar);
-    const missing = index === undefined;
-    const node = getNode(avatar);
+function buildCardBox(key, indexes) {
+    const { type } = parseKey(key);
+    const node = getNode(key);
+    const missing = !nodeExists(key);
+    const thumbnail = nodeThumbnail(key);
 
-    const box = el('div', { className: 'ch-node' });
-    box.dataset.avatar = avatar;
+    const box = el('div', { className: `ch-node ch-node-${type}` });
+    box.dataset.key = key;
     box.dataset.chDrop = 'node';
 
     if (missing) {
@@ -868,28 +1182,31 @@ function buildCardBox(avatar, indexes) {
     if (node?.role === ROLE.INFO) {
         box.classList.add('ch-node-info');
     }
-    if (avatar === selectedAvatar) {
+    if (key === selectedKey) {
         box.classList.add('ch-node-selected');
     }
 
-    box.append(el('img', {
-        className: 'ch-node-avatar',
-        src: missing ? '/img/ai4.png' : context.getThumbnailUrl('avatar', avatar),
-        alt: '',
-        draggable: false,
-    }));
+    if (thumbnail) {
+        box.append(el('img', { className: 'ch-node-avatar', src: thumbnail, alt: '', draggable: false }));
+    } else {
+        box.append(el('div', {
+            className: `ch-node-avatar ch-node-icon fa-solid ${NODE_ICONS[type] ?? NODE_ICONS[NODE_TYPES.CHARACTER]}`,
+        }));
+    }
 
     box.append(el('div', {
         className: 'ch-node-name',
-        textContent: missing ? avatar : displayName(avatar, indexes),
-        title: missing ? `${avatar} — this card is not installed` : avatar,
+        textContent: displayName(key, indexes),
+        title: missing ? `${key} — not installed` : key,
     }));
 
     if (node) {
         const meta = el('div', { className: 'ch-node-meta' });
         meta.append(el('span', {
             className: 'ch-node-role',
-            textContent: node.role === ROLE.INFO ? 'informational' : 'actor',
+            textContent: type === NODE_TYPES.CHARACTER
+                ? (node.role === ROLE.INFO ? 'informational' : 'actor')
+                : (type === NODE_TYPES.BOOK ? 'lorebook' : 'persona'),
         }));
         if (node.books.length) {
             meta.append(el('span', {
@@ -901,14 +1218,133 @@ function buildCardBox(avatar, indexes) {
         if (node.includeCardText) {
             meta.append(el('span', {
                 className: 'ch-node-cardtext fa-solid fa-align-left',
-                title: 'This card\'s own text is injected as a world info entry.',
+                title: 'This node\'s own text is injected as a world info entry.',
             }));
         }
         box.append(meta);
     }
 
-    attachDragHandlers(box, avatar);
+    attachDragHandlers(box, key);
+
+    box.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        // Keep it off SillyTavern's own context menu handlers further up the tree.
+        event.stopPropagation();
+        showNodeMenu(key, event.clientX ?? 0, event.clientY ?? 0);
+    });
+
     return box;
+}
+
+// ---------------------------------------------------------------- the node context menu
+
+/** The open context menu, or null. */
+let nodeMenu = null;
+
+function closeNodeMenu() {
+    nodeMenu?.remove();
+    nodeMenu = null;
+    document.removeEventListener('pointerdown', onNodeMenuDismiss, true);
+    document.removeEventListener('keydown', onNodeMenuKey, true);
+}
+
+function onNodeMenuDismiss(event) {
+    if (nodeMenu && event.target instanceof Node && !nodeMenu.contains(event.target)) {
+        closeNodeMenu();
+    }
+}
+
+function onNodeMenuKey(event) {
+    if (event.key === 'Escape') {
+        closeNodeMenu();
+    }
+}
+
+/** Keeps the focus toggle in the panel header in step with the setting. */
+function syncFocusButton() {
+    document.getElementById('ch_focus')?.classList.toggle('ch-toggle-on', Boolean(settings().focusLineage));
+}
+
+/**
+ * Opens the right-click menu for a node.
+ * @param {string} key The node key.
+ * @param {number} x Viewport x of the pointer.
+ * @param {number} y Viewport y of the pointer.
+ */
+function showNodeMenu(key, x, y) {
+    closeNodeMenu();
+
+    const focused = Boolean(settings().focusLineage);
+    const menu = el('div', { className: 'ch-context-menu' });
+
+    const item = (icon, label, action, extraClass = '') => {
+        const row = el('div', { className: `ch-context-item ${extraClass}`.trim() });
+        row.append(el('i', { className: `fa-solid fa-fw ${icon}` }), el('span', { textContent: label }));
+        row.addEventListener('click', () => {
+            closeNodeMenu();
+            action();
+        });
+        return row;
+    };
+
+    menu.append(el('div', { className: 'ch-context-title', textContent: displayName(key) }));
+    menu.append(item('fa-pen-to-square', 'Edit', () => selectNode(key)));
+
+    if (getParent(key)) {
+        menu.append(item('fa-link-slash', 'Detach from parent', () => {
+            setParent(key, null);
+            renderAll();
+        }));
+    }
+
+    menu.append(item('fa-crosshairs', focused ? 'Show the whole chart' : 'Focus on this line', () => {
+        settings().focusLineage = !focused;
+        getContext().saveSettingsDebounced();
+        syncFocusButton();
+        // Selecting re-anchors the focus on this node.
+        selectNode(key);
+    }));
+
+    menu.append(item('fa-trash-can', 'Take off the chart',
+        () => detachFromChart(key), 'ch-context-danger'));
+
+    // On the body, so the chart pane's own scrolling cannot clip it.
+    document.body.append(menu);
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+
+    // Flip it back inside the window if it would hang off an edge.
+    const rect = menu.getBoundingClientRect();
+    if (rect.width && rect.right > window.innerWidth) {
+        menu.style.left = `${Math.max(0, x - rect.width)}px`;
+    }
+    if (rect.height && rect.bottom > window.innerHeight) {
+        menu.style.top = `${Math.max(0, y - rect.height)}px`;
+    }
+
+    nodeMenu = menu;
+    document.addEventListener('pointerdown', onNodeMenuDismiss, true);
+    document.addEventListener('keydown', onNodeMenuKey, true);
+}
+
+/**
+ * Takes a node off the chart, lifting its children to its old parent.
+ * @param {string} key The node key.
+ */
+function detachFromChart(key) {
+    if (!getNode(key)) {
+        return;
+    }
+
+    const name = displayName(key);
+    removeNode(key);
+
+    if (selectedKey === key) {
+        selectedKey = null;
+    }
+
+    renderAll();
+    toastr.info(`${name} is off the chart. Its lore is no longer inherited.`, 'Character Hierarchy');
 }
 
 // ---------------------------------------------------------------- dragging
@@ -917,19 +1353,32 @@ function buildCardBox(avatar, indexes) {
  * Starts a drag on pointerdown. The pointer is deliberately not captured: the floating ghost
  * ignores pointer events, so whatever is under the cursor stays the event target and doubles
  * as the drop target.
- * @param {HTMLElement} box The card box.
- * @param {string} avatar Avatar file name.
+ *
+ * @param {HTMLElement} box The element being dragged.
+ * @param {string} key The node key it stands for.
+ * @param {'chart'|'list'} origin Where the drag began.
  */
-function attachDragHandlers(box, avatar) {
+function attachDragHandlers(box, key, origin = 'chart') {
     box.addEventListener('pointerdown', (event) => {
         if (event.button !== undefined && event.button !== 0) {
             return;
         }
 
-        event.preventDefault();
+        // Nothing to drop onto while the panel is shut, and every release would count as
+        // "off the chart", which removes things.
+        if (origin === 'list' && !isDrawerOpen()) {
+            return;
+        }
+
+        // Dragging out of SillyTavern's character list must not block its own click handling,
+        // so the default is only suppressed once the pointer has actually travelled.
+        if (origin === 'chart') {
+            event.preventDefault();
+        }
 
         dragState = {
-            avatar,
+            key,
+            origin,
             source: box,
             startX: event.clientX ?? 0,
             startY: event.clientY ?? 0,
@@ -947,7 +1396,7 @@ function attachDragHandlers(box, avatar) {
 /**
  * Works out what the pointer is over, and whether dropping there would mean anything.
  * @param {Event} event A pointer event.
- * @returns {{element: HTMLElement, kind: string, avatar?: string, allowed: boolean}|null} The target.
+ * @returns {{element: HTMLElement|null, kind: string, key?: string, allowed: boolean}|null} The target.
  */
 function findDropTarget(event) {
     if (!dragState) {
@@ -955,40 +1404,33 @@ function findDropTarget(event) {
     }
 
     const found = event.target instanceof Element ? event.target.closest('[data-ch-drop]') : null;
-    if (!(found instanceof HTMLElement)) {
-        return null;
-    }
 
-    const element = found;
-    const kind = element.dataset.chDrop;
+    if (found instanceof HTMLElement) {
+        const kind = found.dataset.chDrop;
 
-    if (kind === 'node') {
-        const avatar = element.dataset.avatar;
-        if (!avatar || avatar === dragState.avatar) {
-            return null;
+        if (kind === 'node') {
+            const key = found.dataset.key;
+            if (!key || key === dragState.key) {
+                return null;
+            }
+            if (getParent(dragState.key) === key) {
+                return { element: found, kind, key, allowed: false };
+            }
+            return { element: found, kind, key, allowed: !wouldCreateCycle(dragState.key, key) };
         }
-        if (getParent(dragState.avatar) === avatar) {
-            return { element, kind, avatar, allowed: false };
+
+        if (kind === 'root') {
+            const node = getNode(dragState.key);
+            return { element: found, kind, allowed: !node || Boolean(node.parent) };
         }
-        return { element, kind, avatar, allowed: !wouldCreateCycle(dragState.avatar, avatar) };
     }
 
-    if (kind === 'tray') {
-        // Only meaningful for a card that is currently in the tree.
-        return { element, kind, allowed: Boolean(getNode(dragState.avatar)) };
-    }
-
-    if (kind === 'root') {
-        // Meaningful for a card from the tray, or one that currently has a parent.
-        const node = getNode(dragState.avatar);
-        return { element, kind, allowed: !node || Boolean(node.parent) };
-    }
-
-    return null;
+    // Anywhere else is off the chart, which takes an existing node out of the tree.
+    return { element: null, kind: 'remove', allowed: Boolean(getNode(dragState.key)) };
 }
 
 /**
- * @param {{element: Element, allowed: boolean}|null} target The new target.
+ * @param {{element: HTMLElement|null, allowed: boolean, kind: string}|null} target The new target.
  */
 function setDropTarget(target) {
     if (dragState?.target?.element && dragState.target.element !== target?.element) {
@@ -997,11 +1439,16 @@ function setDropTarget(target) {
     if (!dragState) {
         return;
     }
+
     dragState.target = target;
+
     if (target?.element) {
         target.element.classList.toggle('ch-drop-ok', target.allowed);
         target.element.classList.toggle('ch-drop-bad', !target.allowed);
     }
+
+    // Make "let go here and it comes off the chart" unmistakable.
+    dragState.ghost?.classList.toggle('ch-ghost-remove', target?.kind === 'remove' && target.allowed);
 }
 
 function onDragMove(event) {
@@ -1018,10 +1465,11 @@ function onDragMove(event) {
         }
         dragState.moved = true;
         dragState.source.classList.add('ch-node-dragging');
+        releaseListPress();
 
-        const ghost = dragState.source.cloneNode(true);
+        const ghost = buildCardBox(dragState.key, indexByAvatar());
         ghost.classList.add('ch-ghost');
-        ghost.classList.remove('ch-node-dragging', 'ch-node-selected');
+        ghost.classList.remove('ch-node-selected');
         ghost.removeAttribute('data-ch-drop');
         document.body.append(ghost);
         dragState.ghost = ghost;
@@ -1063,10 +1511,28 @@ function onDragEnd(event) {
     const target = dragState.moved ? findDropTarget(event) : null;
     const state = cleanupDrag();
 
-    // A press that never travelled is a click: show the card's settings.
+    // A press that never travelled is a click. On the chart that selects the node, or on a
+    // second quick click opens whatever the node stands for. In SillyTavern's character list
+    // it is their click to handle, not ours.
     if (!state.moved) {
-        selectCard(state.avatar);
+        if (state.origin === 'chart') {
+            const now = Date.now();
+
+            if (lastNodeClick.key === state.key && now - lastNodeClick.at < DOUBLE_CLICK_MS) {
+                lastNodeClick = { key: null, at: 0 };
+                openNodeTarget(state.key);
+                return;
+            }
+
+            lastNodeClick = { key: state.key, at: now };
+            selectNode(state.key);
+        }
         return;
+    }
+
+    // The drag ended on something; stop the list from also treating it as a character pick.
+    if (state.origin === 'list') {
+        suppressNextListClick(state.source);
     }
 
     if (!target?.allowed) {
@@ -1075,24 +1541,657 @@ function onDragEnd(event) {
 
     switch (target.kind) {
         case 'node':
-            if (!setParent(state.avatar, target.avatar)) {
+            if (!setParent(state.key, target.key)) {
                 return;
             }
             break;
         case 'root':
-            ensureNode(state.avatar);
-            setParent(state.avatar, null);
+            ensureNode(state.key);
+            setParent(state.key, null);
             break;
-        case 'tray':
-            removeNode(state.avatar);
-            if (selectedAvatar === state.avatar) {
-                selectedAvatar = null;
-            }
-            break;
+        case 'remove':
+            detachFromChart(state.key);
+            return;
         default:
             return;
     }
 
+    selectedKey = state.key;
+    renderAll();
+}
+
+/**
+ * Tells SillyTavern the press on a character list row is over, once our own drag has taken the
+ * gesture over.
+ *
+ * Its bulk edit overlay arms a long-press timer on a row's mousedown and cancels it on mouseup
+ * over the row or the list. Our drag ends over the chart, so neither fires and the timer runs
+ * on to switch bulk edit mode on by itself. A bubbling mouseup reaches both of its cancels,
+ * which is what a native drag would have done — it already listens for dragend the same way.
+ */
+function releaseListPress() {
+    if (dragState?.origin !== 'list' || !dragState.source) {
+        return;
+    }
+
+    dragState.source.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+}
+
+/**
+ * Swallows the click that a browser fires on the row a drag just started from, so the list
+ * does not also treat the drag as a character pick.
+ *
+ * Scoped to that one row: a document-wide listener would be armed until *some* click happened
+ * and could eat an unrelated one.
+ *
+ * @param {HTMLElement} row The row the drag began on.
+ */
+function suppressNextListClick(row) {
+    const swallow = (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+    };
+    row.addEventListener('click', swallow, { capture: true, once: true });
+    // If no click arrives, do not leave the listener armed for the next one.
+    setTimeout(() => row.removeEventListener('click', swallow, { capture: true }), 0);
+}
+
+// ---------------------------------------------------------------- SillyTavern's character list
+
+/**
+ * Makes SillyTavern's own character list the source of new cards: its rows can be dragged
+ * onto the chart, and rows already on the chart are dimmed.
+ */
+function wireCharacterList() {
+    const list = document.querySelector(CHARACTER_LIST);
+
+    if (!list) {
+        console.warn(`${LOG} no character list, so cards cannot be dragged onto the chart`);
+        return;
+    }
+
+    decorateCharacterList();
+
+    // The list is re-rendered on paging, searching and filtering, so re-decorate each time.
+    new MutationObserver(() => decorateCharacterList()).observe(list, { childList: true, subtree: true });
+}
+
+/** @returns {string|null} The avatar a character list row stands for. */
+function avatarOfListRow(row) {
+    const chid = row?.dataset?.chid;
+    if (chid === undefined) {
+        return null;
+    }
+    return getContext().characters?.[Number(chid)]?.avatar ?? null;
+}
+
+/** Marks rows that are already on the chart, and makes every row a drag source. */
+function decorateCharacterList() {
+    const list = document.querySelector(CHARACTER_LIST);
+
+    if (!list) {
+        return;
+    }
+
+    const panelOpen = isDrawerOpen();
+
+    for (const row of list.querySelectorAll('.character_select')) {
+        if (!(row instanceof HTMLElement)) {
+            continue;
+        }
+
+        const avatar = avatarOfListRow(row);
+
+        if (!avatar) {
+            continue;
+        }
+
+        // The dimming is an affordance of the panel. With the panel shut, SillyTavern's list
+        // should look exactly as it drew it.
+        row.classList.toggle('ch-on-chart', panelOpen && Boolean(getNode(charKey(avatar))));
+
+        if (!row.dataset.chDragWired) {
+            row.dataset.chDragWired = 'true';
+
+            // A row contains the card's thumbnail, and browsers drag images natively. That
+            // drag ends in a drop on the page, where SillyTavern's importer takes it for a
+            // character file and reports it as corrupt. Suppress it so only our own
+            // pointer-driven drag runs. dragstart bubbles, so this covers the image too.
+            row.draggable = false;
+            row.addEventListener('dragstart', (event) => event.preventDefault());
+
+            attachDragHandlers(row, charKey(avatar), 'list');
+        }
+    }
+}
+
+// ---------------------------------------------------------------- chart
+
+function renderChart() {
+    const container = document.getElementById('ch_chart');
+    if (!container) {
+        return;
+    }
+
+    closeNodeMenu();
+    wireChartBackground(container);
+
+    if (normalizeNodes()) {
+        save();
+    }
+
+    const indexes = indexByAvatar();
+    const { positions, width, height } = layoutForest();
+
+    container.innerHTML = '';
+    container.dataset.chDrop = 'root';
+    container.style.setProperty('--ch-pad', `${CHART_PADDING}px`);
+
+    // The chart is a border box, so the padding has to be added back on to the laid-out size;
+    // otherwise min-width/min-height of 100% would always overflow the pane by the padding.
+    container.style.width = positions.size ? `${width + CHART_PADDING * 2}px` : '';
+    container.style.height = positions.size ? `${height + CHART_PADDING * 2}px` : '';
+
+    const { anchor } = focusedKeys();
+    const hidden = Object.keys(settings().nodes).length - positions.size;
+
+    if (!positions.size) {
+        container.append(el('div', {
+            className: 'ch-empty',
+            textContent: 'Drag a character here from the list on the right, or add a lorebook or persona above.',
+        }));
+        return;
+    }
+
+    // Connectors go in first so the boxes sit on top of them.
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'ch-links');
+    svg.setAttribute('width', String(width));
+    svg.setAttribute('height', String(height));
+
+    for (const [key, position] of positions) {
+        const parent = getParent(key);
+        const parentPosition = parent ? positions.get(parent) : null;
+        if (!parentPosition) {
+            continue;
+        }
+
+        const fromX = parentPosition.x + NODE_WIDTH / 2;
+        const fromY = parentPosition.y + NODE_HEIGHT;
+        const toX = position.x + NODE_WIDTH / 2;
+        const elbowY = fromY + ROW_GAP / 2;
+
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('class', 'ch-link');
+        path.setAttribute('d', `M ${fromX} ${fromY} V ${elbowY} H ${toX} V ${position.y}`);
+        svg.append(path);
+    }
+
+    container.append(svg);
+
+    for (const [key, position] of positions) {
+        const box = buildCardBox(key, indexes);
+        box.style.left = `${position.x}px`;
+        box.style.top = `${position.y}px`;
+        container.append(box);
+    }
+
+    renderNodeActions(container, positions);
+
+    if (anchor && hidden > 0) {
+        container.append(el('div', {
+            className: 'ch-focus-note',
+            textContent: `Showing only ${displayName(anchor)}'s line — ${hidden} other `
+                + `${hidden === 1 ? 'node is' : 'nodes are'} hidden.`,
+        }));
+    }
+}
+
+/**
+ * The little strip of actions that appears directly under the selected node.
+ * @param {HTMLElement} container The chart.
+ * @param {Map<string, {x: number, y: number}>} positions Laid-out node positions.
+ */
+function renderNodeActions(container, positions) {
+    const position = selectedKey ? positions.get(selectedKey) : null;
+
+    if (!position) {
+        return;
+    }
+
+    const actions = el('div', { className: 'ch-node-actions' });
+    actions.style.left = `${position.x}px`;
+    actions.style.top = `${position.y + NODE_HEIGHT}px`;
+
+    const focused = Boolean(settings().focusLineage);
+    const focus = el('div', {
+        className: `ch-node-action fa-solid fa-crosshairs${focused ? ' ch-toggle-on' : ''}`,
+        title: focused ? 'Show the whole chart again' : 'Show only this node\'s line',
+    });
+    focus.addEventListener('click', () => {
+        settings().focusLineage = !focused;
+        getContext().saveSettingsDebounced();
+        syncFocusButton();
+        // Re-selecting re-anchors the focus on this node and repaints.
+        selectNode(selectedKey);
+    });
+    actions.append(focus);
+
+    if (getParent(selectedKey)) {
+        const detach = el('div', {
+            className: 'ch-node-action fa-solid fa-link-slash',
+            title: 'Detach from its parent, leaving it a root',
+        });
+        detach.addEventListener('click', () => {
+            setParent(selectedKey, null);
+            renderAll();
+        });
+        actions.append(detach);
+    }
+
+    const remove = el('div', {
+        className: 'ch-node-action ch-node-action-remove fa-solid fa-trash-can',
+        title: 'Take this off the chart',
+    });
+    remove.addEventListener('click', () => detachFromChart(selectedKey));
+    actions.append(remove);
+
+    container.append(actions);
+}
+
+/** Where a press on empty chart space began, so a click can be told from a drag. */
+let backgroundPress = null;
+
+/** How close together two clicks on a node count as a double click. */
+const DOUBLE_CLICK_MS = 400;
+
+/** The last node click, for spotting the second one. */
+let lastNodeClick = { key: null, at: 0 };
+
+/**
+ * Opens whatever a node stands for: a character's chat, a persona in the persona manager, or
+ * a lorebook in the world info editor.
+ *
+ * Double click is detected from our own pointer handling rather than the native dblclick
+ * event, which a chart node never sees — pointerdown is defaulted away there to stop the
+ * browser starting a drag or a selection of its own.
+ *
+ * @param {string} key The node key.
+ */
+async function openNodeTarget(key) {
+    const { type, id } = parseKey(key);
+
+    if (!nodeExists(key)) {
+        toastr.warning(`${displayName(key)} is not installed any more.`, 'Character Hierarchy');
+        return;
+    }
+
+    try {
+        switch (type) {
+            case NODE_TYPES.BOOK:
+                openWorldInfoEditor(id);
+                break;
+
+            case NODE_TYPES.PERSONA: {
+                const toggle = document.querySelector('#persona-management-button .drawer-toggle');
+                if (toggle instanceof HTMLElement
+                    && !document.querySelector('#persona-management-button .drawer-content')
+                        ?.classList.contains('openDrawer')) {
+                    toggle.click();
+                }
+                // Pages the persona list to the one asked for, the way SillyTavern does.
+                await getUserAvatars(true, id);
+                break;
+            }
+
+            default: {
+                const index = indexByAvatar().get(id);
+                if (index !== undefined) {
+                    await getContext().selectCharacterById(index);
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`${LOG} could not open ${key}`, error);
+        toastr.error(`Could not open ${displayName(key)}.`, 'Character Hierarchy');
+    }
+}
+
+/**
+ * Clicking empty chart space clears the selection. Both the press and the release have to land
+ * on the background itself, so a drag that started on a node and ended on the backdrop is left
+ * alone — that one has just re-rooted the node and selected it.
+ *
+ * @param {HTMLElement} container The chart.
+ */
+function wireChartBackground(container) {
+    if (container.dataset.chBackgroundWired) {
+        return;
+    }
+    container.dataset.chBackgroundWired = 'true';
+
+    container.addEventListener('pointerdown', (event) => {
+        backgroundPress = event.target === container
+            ? { x: event.clientX ?? 0, y: event.clientY ?? 0 }
+            : null;
+    });
+
+    container.addEventListener('pointerup', (event) => {
+        const press = backgroundPress;
+        backgroundPress = null;
+
+        if (!press || event.target !== container || !selectedKey) {
+            return;
+        }
+
+        const travelled = Math.hypot((event.clientX ?? 0) - press.x, (event.clientY ?? 0) - press.y);
+        if (travelled < DRAG_THRESHOLD) {
+            selectNode(null);
+        }
+    });
+}
+
+/**
+ * @param {string|null} key The node to show settings for.
+ */
+function selectNode(key) {
+    selectedKey = key;
+    renderChart();
+    renderEditor();
+}
+
+function renderAll() {
+    if (selectedKey && !getNode(selectedKey)) {
+        selectedKey = null;
+    }
+
+    updateCharacterButton();
+    decorateCharacterList();
+
+    // No point laying out a chart nobody can see; opening the panel repaints it.
+    if (!isDrawerOpen()) {
+        return;
+    }
+
+    renderChart();
+    renderEditor();
+}
+
+// ---------------------------------------------------------------- inheritance read-outs
+
+/**
+ * The books this node picks up from the nodes above it, nearest first.
+ * @param {string} key The node key.
+ * @returns {Promise<{book: string, depth: number, source: string}[]>} Inherited books.
+ */
+async function booksInheritedFromAbove(key) {
+    const maxDepth = Math.max(1, Number(settings().maxDepth) || 1);
+    const indexes = indexByAvatar();
+    const seen = new Set();
+    const inherited = [];
+
+    for (const ancestor of getAncestors(key, maxDepth)) {
+        for (const book of await nodeBooks(ancestor.key)) {
+            if (seen.has(book)) {
+                continue;
+            }
+            seen.add(book);
+            inherited.push({
+                book,
+                depth: ancestor.depth,
+                source: displayName(ancestor.key, indexes),
+            });
+        }
+    }
+
+    return inherited;
+}
+
+// ---------------------------------------------------------------- the node editor
+
+/**
+ * Builds the live settings panel for one node. Every control applies immediately.
+ * @param {string} key The node key.
+ * @param {() => void} onStructureChange Called when the node's place in the tree changes.
+ * @returns {HTMLElement} The panel.
+ */
+function buildCardEditor(key, onStructureChange) {
+    const context = getContext();
+    const indexes = indexByAvatar();
+    const node = ensureNode(key);
+    const store = settings();
+    const { type } = parseKey(key);
+    const installed = nodeExists(key);
+    const thumbnail = nodeThumbnail(key);
+
+    const panel = el('div', { className: 'ch-editor' });
+
+    const header = el('div', { className: 'ch-editor-header' });
+    header.append(thumbnail
+        ? el('img', { className: 'ch-editor-avatar', src: thumbnail, alt: '', draggable: false })
+        : el('div', { className: `ch-editor-avatar ch-node-icon fa-solid ${NODE_ICONS[type]}` }));
+    header.append(el('div', { className: 'ch-editor-title' }, [
+        el('div', { className: 'ch-editor-name', textContent: displayName(key, indexes) }),
+        el('div', { className: 'ch-editor-file', textContent: installed ? key : `${key} — not installed` }),
+    ]));
+
+    const remove = iconButton('fa-solid fa-trash-can', 'Take this off the chart');
+    remove.addEventListener('click', () => detachFromChart(key));
+    header.append(remove);
+    panel.append(header);
+
+    const grid = el('div', { className: 'ch-editor-grid' });
+
+    // Only character cards can speak, so only they get a role to choose.
+    if (type === NODE_TYPES.CHARACTER) {
+        const roleSelect = el('select', { className: 'text_pole' });
+        roleSelect.append(el('option', { value: ROLE.ACTOR, textContent: 'Actor — takes part in the roleplay' }));
+        roleSelect.append(el('option', { value: ROLE.INFO, textContent: 'Informational — a lore container only' }));
+        roleSelect.value = node.role;
+        roleSelect.addEventListener('change', () => {
+            ensureNode(key).role = roleSelect.value === ROLE.INFO ? ROLE.INFO : ROLE.ACTOR;
+            save();
+            renderChart();
+            updateCharacterButton();
+        });
+        grid.append(el('div', {}, [field('Role', roleSelect)]));
+    } else {
+        grid.append(el('div', {}, [field('Role', el('input', {
+            className: 'text_pole',
+            value: type === NODE_TYPES.BOOK ? 'Lorebook — a container only' : 'Persona — a container only',
+            disabled: true,
+        }))]));
+    }
+
+    const parentSelect = el('select', { className: 'text_pole' });
+    parentSelect.append(el('option', { value: '', textContent: '— none (top of its tree) —' }));
+
+    const candidates = Object.keys(store.nodes)
+        .filter((candidate) => candidate !== key && !wouldCreateCycle(key, candidate))
+        .sort((a, b) => displayName(a, indexes).localeCompare(displayName(b, indexes)));
+
+    for (const candidate of candidates) {
+        parentSelect.append(el('option', {
+            value: candidate,
+            textContent: `${displayName(candidate, indexes)} (${parseKey(candidate).type})`,
+        }));
+    }
+    if (node.parent && !candidates.includes(node.parent)) {
+        parentSelect.append(el('option', { value: node.parent, textContent: `${node.parent} (not installed)` }));
+    }
+    parentSelect.value = node.parent ?? '';
+    parentSelect.addEventListener('change', () => {
+        if (setParent(key, parentSelect.value || null)) {
+            onStructureChange();
+        }
+    });
+    grid.append(el('div', {}, [field('Nested under', parentSelect,
+        'Only things already on the chart can be parents. Or just drag the node onto its new parent.')]));
+    panel.append(grid);
+
+    const filterInput = el('input', { type: 'search', className: 'text_pole', placeholder: 'Filter lorebooks…' });
+    const booksSelect = el('select', { className: 'text_pole ch-books-select', multiple: true });
+
+    const worldNames = typeof context.getWorldInfoNames === 'function' ? context.getWorldInfoNames() : [];
+    for (const name of worldNames) {
+        booksSelect.append(el('option', { value: name, textContent: name, selected: node.books.includes(name) }));
+    }
+    for (const name of node.books.filter((book) => !worldNames.includes(book))) {
+        booksSelect.append(el('option', { value: name, textContent: `${name} (missing)`, selected: true }));
+    }
+
+    filterInput.addEventListener('input', () => {
+        const needle = filterInput.value.trim().toLowerCase();
+        for (const option of booksSelect.options) {
+            option.hidden = Boolean(needle) && !option.value.toLowerCase().includes(needle) && !option.selected;
+        }
+    });
+
+    const passedDown = el('div', { className: 'ch-hint' });
+    const inheritedList = el('div', { className: 'ch-inherited' });
+
+    const refreshReadouts = async () => {
+        const own = await nodeBooks(key);
+        passedDown.textContent = own.length
+            ? `Everything nested under this inherits: ${own.join(', ')}`
+            : 'This node has no lorebooks to pass down yet.';
+
+        inheritedList.innerHTML = '';
+        const inherited = await booksInheritedFromAbove(key);
+        if (!inherited.length) {
+            inheritedList.append(el('div', {
+                className: 'ch-hint',
+                textContent: 'Nothing sits above this, so it inherits nothing.',
+            }));
+            return;
+        }
+        for (const item of inherited) {
+            inheritedList.append(el('div', { className: 'ch-inherited-row' }, [
+                el('span', { className: 'ch-inherited-book', textContent: item.book }),
+                el('span', { className: 'ch-inherited-from', textContent: `level ${item.depth} · ${item.source}` }),
+            ]));
+        }
+    };
+
+    booksSelect.addEventListener('change', () => {
+        ensureNode(key).books = [...booksSelect.selectedOptions].map((option) => option.value);
+        save();
+        renderChart();
+        refreshReadouts();
+    });
+
+    panel.append(field('Extra lorebooks held on this node', filterInput,
+        'Tracked by this extension, on top of whatever the node already carries. Ctrl-click or shift-click to pick several.'));
+    panel.append(booksSelect);
+    panel.append(passedDown);
+
+    // A lorebook has no prose of its own to inject; a card and a persona do.
+    if (type !== NODE_TYPES.BOOK) {
+        const cardTextLabel = el('label', { className: 'checkbox_label' });
+        const cardTextCheckbox = el('input', { type: 'checkbox', checked: node.includeCardText });
+        cardTextLabel.append(cardTextCheckbox, el('span', {
+            textContent: type === NODE_TYPES.PERSONA
+                ? 'Inject this persona\'s description as a world info entry'
+                : 'Inject this card\'s own text as a world info entry',
+        }));
+        cardTextCheckbox.addEventListener('change', () => {
+            ensureNode(key).includeCardText = cardTextCheckbox.checked;
+            save();
+            renderChart();
+        });
+        panel.append(cardTextLabel);
+        panel.append(el('div', {
+            className: 'ch-hint',
+            textContent: store.injectCardText
+                ? 'Uses the template in the "Informational card text" section below.'
+                : 'Card text injection is switched off globally, so this will have no effect yet.',
+        }));
+    }
+
+    panel.append(el('div', { className: 'ch-editor-subhead', textContent: 'Inherited from above' }));
+    panel.append(inheritedList);
+
+    refreshReadouts();
+
+    return panel;
+}
+
+function renderEditor() {
+    const container = document.getElementById('ch_editor');
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = '';
+
+    if (!selectedKey) {
+        container.append(el('div', {
+            className: 'ch-hint',
+            textContent: 'Click a node in the chart to edit it.',
+        }));
+        return;
+    }
+
+    container.append(buildCardEditor(selectedKey, renderAll));
+}
+
+// ---------------------------------------------------------------- adding lorebooks and personas
+
+/**
+ * Asks which lorebook or persona to put on the chart, then puts it there.
+ * @param {string} type NODE_TYPES.BOOK or NODE_TYPES.PERSONA.
+ */
+async function addNodeOfType(type) {
+    const context = getContext();
+    const isBook = type === NODE_TYPES.BOOK;
+
+    const available = isBook
+        ? (context.getWorldInfoNames?.() ?? []).map((name) => ({ id: name, label: name }))
+        : Object.entries(allPersonas()).map(([id, name]) => ({ id, label: name || id }));
+
+    const candidates = available
+        .filter((candidate) => !getNode(makeKey(type, candidate.id)))
+        .sort((a, b) => a.label.localeCompare(b.label));
+
+    if (!candidates.length) {
+        toastr.info(
+            available.length
+                ? `Every ${isBook ? 'lorebook' : 'persona'} is already on the chart.`
+                : `There are no ${isBook ? 'lorebooks' : 'personas'} to add.`,
+            'Character Hierarchy');
+        return;
+    }
+
+    const content = el('div', { className: 'ch-editor' });
+    content.append(el('h3', { textContent: isBook ? 'Add a lorebook' : 'Add a persona' }));
+
+    const filterInput = el('input', { type: 'search', className: 'text_pole', placeholder: 'Filter…' });
+    const select = el('select', { className: 'text_pole ch-books-select', size: 12 });
+
+    for (const candidate of candidates) {
+        select.append(el('option', { value: candidate.id, textContent: candidate.label }));
+    }
+    select.selectedIndex = 0;
+
+    filterInput.addEventListener('input', () => {
+        const needle = filterInput.value.trim().toLowerCase();
+        for (const option of select.options) {
+            option.hidden = Boolean(needle) && !option.textContent.toLowerCase().includes(needle);
+        }
+    });
+
+    content.append(filterInput, select);
+
+    const popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: 'Add', cancelButton: 'Cancel' });
+
+    if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE || !select.value) {
+        return;
+    }
+
+    const key = makeKey(type, select.value);
+    ensureNode(key);
+    save();
+    selectedKey = key;
     renderAll();
 }
 
@@ -1109,7 +2208,8 @@ function getListFilterState() {
  * button can show only the cards in a tree, or hide them.
  */
 function installCharacterListFilter() {
-    const isInHierarchy = (entity) => entity?.type === 'character' && Boolean(getNode(entity.item?.avatar));
+    const isInHierarchy = (entity) => entity?.type === 'character'
+        && Boolean(getNode(charKey(entity.item?.avatar)));
 
     entitiesFilter.filterData[LIST_FILTER_KEY] = getListFilterState();
     entitiesFilter.filterFunctions[LIST_FILTER_KEY] = (data) => entitiesFilter.filterDataByState(
@@ -1199,6 +2299,86 @@ function watchFilterRow() {
 
 // ---------------------------------------------------------------- the top bar drawer
 
+/**
+ * What we changed to keep the character list on screen, so it can be put back exactly.
+ * @type {{opened: boolean, pinnedContent: boolean, pinnedIcon: boolean}|null}
+ */
+let listHold = null;
+
+/** @returns {boolean} True when SillyTavern's character list is on screen. */
+function isCharacterListOpen() {
+    return Boolean(document.querySelector(CHARACTER_PANEL.content)?.classList.contains('openDrawer'));
+}
+
+/**
+ * Brings the character list up alongside the chart, since the chart asks you to drag cards out
+ * of it. Drawers close one another, so it is also pinned for the moment — exactly the way
+ * SillyTavern's own pin does it — or opening our panel would shut it again.
+ */
+async function holdCharacterListOpen() {
+    const context = getContext();
+    const content = document.querySelector(CHARACTER_PANEL.content);
+    const toggle = document.querySelector(CHARACTER_PANEL.toggle);
+
+    // Two side-by-side panels do not fit a phone, so leave the choice to the user there.
+    if (!content || !toggle || listHold || context.isMobile?.()) {
+        return;
+    }
+
+    const opened = !isCharacterListOpen();
+    if (opened) {
+        await doNavbarIconClick.call($(toggle));
+    }
+
+    const icon = document.querySelector(CHARACTER_PANEL.icon);
+    const pinnedContent = !content.classList.contains('pinnedOpen');
+    const pinnedIcon = Boolean(icon) && !icon.classList.contains('drawerPinnedOpen');
+
+    if (pinnedContent) {
+        content.classList.add('pinnedOpen');
+    }
+    if (pinnedIcon) {
+        icon.classList.add('drawerPinnedOpen');
+    }
+
+    listHold = { opened, pinnedContent, pinnedIcon };
+}
+
+/** @returns {boolean} True when the user has locked the character list open. */
+function isCharacterListLocked() {
+    const lock = document.querySelector(CHARACTER_PANEL.lock);
+    return lock instanceof HTMLInputElement && lock.checked;
+}
+
+/** Undoes exactly what holdCharacterListOpen() did, and nothing the user did themselves. */
+async function releaseCharacterList() {
+    if (!listHold) {
+        return;
+    }
+
+    const hold = listHold;
+    listHold = null;
+
+    // The hold was recorded when the panel opened. If the user has thrown the lock since,
+    // that is a newer decision than ours, so leave the panel exactly as they set it.
+    if (isCharacterListLocked()) {
+        return;
+    }
+
+    if (hold.pinnedContent) {
+        document.querySelector(CHARACTER_PANEL.content)?.classList.remove('pinnedOpen');
+    }
+    if (hold.pinnedIcon) {
+        document.querySelector(CHARACTER_PANEL.icon)?.classList.remove('drawerPinnedOpen');
+    }
+
+    // Only shut it again if we were the ones who opened it.
+    const toggle = document.querySelector(CHARACTER_PANEL.toggle);
+    if (hold.opened && toggle && isCharacterListOpen()) {
+        await doNavbarIconClick.call($(toggle));
+    }
+}
+
 /** @returns {boolean} True when the hierarchy panel is on screen. */
 function isDrawerOpen() {
     return Boolean(document.getElementById(DRAWER_ID)?.classList.contains('openDrawer'));
@@ -1220,7 +2400,7 @@ function openDrawer() {
  * @param {string} avatar Avatar file name.
  */
 function openDrawerFor(avatar) {
-    selectedAvatar = avatar;
+    selectedKey = charKey(avatar);
     openDrawer();
     renderAll();
 }
@@ -1271,13 +2451,34 @@ async function installDrawer() {
     }
 
     // SillyTavern binds the navbar handler once at startup, so this drawer needs it by hand.
-    toggle.addEventListener('click', () => {
-        doNavbarIconClick.call($(toggle));
-        // The panel is not rendered while hidden, so catch up on the way in.
-        if (uiDirty) {
-            renderAll();
+    toggle.addEventListener('click', async () => {
+        const opening = !isDrawerOpen();
+
+        if (opening) {
+            await holdCharacterListOpen();
         }
+
+        await doNavbarIconClick.call($(toggle));
+
+        if (!opening) {
+            await releaseCharacterList();
+        }
+
+        // Catches the chart up on the way in, and clears the list dimming on the way out.
+        renderAll();
     });
+
+    // Opening any other drawer closes ours without going through the handler above, so the
+    // character list would be left held open. Tidy up whenever our panel ends up shut.
+    holder.addEventListener('click', (event) => {
+        if (event.target instanceof Element && event.target.closest('.drawer-toggle')) {
+            setTimeout(() => {
+                if (!isDrawerOpen()) {
+                    releaseCharacterList();
+                }
+            }, 0);
+        }
+    }, true);
 
     const context = getContext();
     if (context.powerUserSettings?.movingUI && !context.isMobile?.()) {
@@ -1291,379 +2492,6 @@ async function installDrawer() {
     return true;
 }
 
-// ---------------------------------------------------------------- chart and tray
-
-function renderChart() {
-    const container = document.getElementById('ch_chart');
-    if (!container) {
-        return;
-    }
-
-    if (normalizeNodes()) {
-        save();
-    }
-
-    const indexes = indexByAvatar();
-    const { positions, width, height } = layoutForest();
-
-    container.innerHTML = '';
-    container.dataset.chDrop = 'root';
-    container.style.setProperty('--ch-pad', `${CHART_PADDING}px`);
-
-    // The chart is a border box, so the padding has to be added back on to the laid-out size;
-    // otherwise min-width/min-height of 100% would always overflow the pane by the padding.
-    container.style.width = positions.size ? `${width + CHART_PADDING * 2}px` : '';
-    container.style.height = positions.size ? `${height + CHART_PADDING * 2}px` : '';
-
-    if (!positions.size) {
-        container.append(el('div', {
-            className: 'ch-empty',
-            textContent: 'Drag a card in from the right to start a tree.',
-        }));
-        return;
-    }
-
-    // Connectors go in first so the boxes sit on top of them.
-    const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('class', 'ch-links');
-    svg.setAttribute('width', String(width));
-    svg.setAttribute('height', String(height));
-
-    for (const [avatar, position] of positions) {
-        const parent = getParent(avatar);
-        const parentPosition = parent ? positions.get(parent) : null;
-        if (!parentPosition) {
-            continue;
-        }
-
-        const fromX = parentPosition.x + NODE_WIDTH / 2;
-        const fromY = parentPosition.y + NODE_HEIGHT;
-        const toX = position.x + NODE_WIDTH / 2;
-        const elbowY = fromY + ROW_GAP / 2;
-
-        const path = document.createElementNS(SVG_NS, 'path');
-        path.setAttribute('class', 'ch-link');
-        path.setAttribute('d', `M ${fromX} ${fromY} V ${elbowY} H ${toX} V ${position.y}`);
-        svg.append(path);
-    }
-
-    container.append(svg);
-
-    for (const [avatar, position] of positions) {
-        const box = buildCardBox(avatar, indexes);
-        box.style.left = `${position.x}px`;
-        box.style.top = `${position.y}px`;
-        container.append(box);
-    }
-}
-
-function renderTray() {
-    const container = document.getElementById('ch_tray');
-    if (!container) {
-        return;
-    }
-
-    const store = settings();
-    const indexes = indexByAvatar();
-    const filter = document.getElementById('ch_tray_filter');
-    const needle = (filter instanceof HTMLInputElement ? filter.value : '').trim().toLowerCase();
-
-    container.innerHTML = '';
-    container.dataset.chDrop = 'tray';
-
-    const loose = (getContext().characters ?? [])
-        .filter((character) => character?.avatar && !Object.hasOwn(store.nodes, character.avatar))
-        .filter((character) => !needle || String(character.name).toLowerCase().includes(needle))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-    const count = document.getElementById('ch_tray_count');
-    if (count) {
-        count.textContent = String(loose.length);
-    }
-
-    if (!loose.length) {
-        container.append(el('div', {
-            className: 'ch-empty',
-            textContent: needle ? 'No cards match.' : 'Every card is in a tree.',
-        }));
-        return;
-    }
-
-    for (const character of loose) {
-        container.append(buildCardBox(character.avatar, indexes));
-    }
-}
-
-/**
- * @param {string|null} avatar The card to show settings for.
- */
-function selectCard(avatar) {
-    selectedAvatar = avatar;
-    renderChart();
-    renderTray();
-    renderEditor();
-}
-
-function renderAll() {
-    if (selectedAvatar && !getNode(selectedAvatar)
-        && !(getContext().characters ?? []).some((character) => character?.avatar === selectedAvatar)) {
-        selectedAvatar = null;
-    }
-
-    updateCharacterButton();
-
-    // No point laying out a chart nobody can see; renderAll() runs again on the way in.
-    if (!isDrawerOpen()) {
-        uiDirty = true;
-        return;
-    }
-
-    uiDirty = false;
-    renderChart();
-    renderTray();
-    renderEditor();
-}
-
-// ---------------------------------------------------------------- inheritance read-outs
-
-/**
- * The books this card hands down to everything nested under it.
- * @param {string} avatar Avatar file name.
- * @returns {Promise<string[]>} Book names.
- */
-async function booksPassedDown(avatar) {
-    const store = settings();
-    const index = indexByAvatar().get(avatar);
-    const books = [];
-
-    if (store.inheritPrimaryBook && index !== undefined) {
-        const primary = await primaryBook(index);
-        if (primary) {
-            books.push(primary);
-        }
-    }
-    if (store.inheritAuxBooks) {
-        books.push(...auxBooks(avatar));
-    }
-    if (store.inheritNodeBooks) {
-        books.push(...(getNode(avatar)?.books ?? []));
-    }
-
-    return [...new Set(books.filter(Boolean))];
-}
-
-/**
- * The books this card picks up from the cards above it, nearest first.
- * @param {string} avatar Avatar file name.
- * @returns {Promise<{book: string, depth: number, source: string}[]>} Inherited books.
- */
-async function booksInheritedFromAbove(avatar) {
-    const maxDepth = Math.max(1, Number(settings().maxDepth) || 1);
-    const indexes = indexByAvatar();
-    const seen = new Set();
-    const inherited = [];
-
-    for (const ancestor of getAncestors(avatar, maxDepth)) {
-        for (const book of await booksPassedDown(ancestor.avatar)) {
-            if (seen.has(book)) {
-                continue;
-            }
-            seen.add(book);
-            inherited.push({
-                book,
-                depth: ancestor.depth,
-                source: displayName(ancestor.avatar, indexes),
-            });
-        }
-    }
-
-    return inherited;
-}
-
-// ---------------------------------------------------------------- the card editor
-
-/**
- * Builds the live settings panel for one card. Every control applies immediately.
- * @param {string} avatar Avatar file name.
- * @param {() => void} onStructureChange Called when the card's place in the tree changes.
- * @returns {HTMLElement} The panel.
- */
-function buildCardEditor(avatar, onStructureChange) {
-    const context = getContext();
-    const indexes = indexByAvatar();
-    const node = ensureNode(avatar);
-    const store = settings();
-    const installed = indexes.has(avatar);
-
-    const panel = el('div', { className: 'ch-editor' });
-
-    const header = el('div', { className: 'ch-editor-header' });
-    header.append(el('img', {
-        className: 'ch-editor-avatar',
-        src: installed ? context.getThumbnailUrl('avatar', avatar) : '/img/ai4.png',
-        alt: '',
-        draggable: false,
-    }));
-    header.append(el('div', { className: 'ch-editor-title' }, [
-        el('div', { className: 'ch-editor-name', textContent: displayName(avatar, indexes) }),
-        el('div', { className: 'ch-editor-file', textContent: installed ? avatar : `${avatar} — not installed` }),
-    ]));
-
-    const remove = iconButton('fa-solid fa-trash-can', 'Remove this card from the tree');
-    remove.addEventListener('click', () => {
-        removeNode(avatar);
-        selectedAvatar = null;
-        onStructureChange();
-    });
-    header.append(remove);
-    panel.append(header);
-
-    const grid = el('div', { className: 'ch-editor-grid' });
-
-    const roleSelect = el('select', { className: 'text_pole' });
-    roleSelect.append(el('option', { value: ROLE.ACTOR, textContent: 'Actor — takes part in the roleplay' }));
-    roleSelect.append(el('option', { value: ROLE.INFO, textContent: 'Informational — a lore container only' }));
-    roleSelect.value = node.role;
-    roleSelect.addEventListener('change', () => {
-        ensureNode(avatar).role = roleSelect.value === ROLE.INFO ? ROLE.INFO : ROLE.ACTOR;
-        save();
-        renderChart();
-        renderTray();
-        updateCharacterButton();
-    });
-    grid.append(el('div', {}, [field('Role', roleSelect)]));
-
-    const parentSelect = el('select', { className: 'text_pole' });
-    parentSelect.append(el('option', { value: '', textContent: '— none (top of its tree) —' }));
-
-    const candidates = (context.characters ?? [])
-        .filter((character) => character?.avatar
-            && character.avatar !== avatar
-            && !wouldCreateCycle(avatar, character.avatar))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-    for (const character of candidates) {
-        parentSelect.append(el('option', {
-            value: character.avatar,
-            textContent: isInfo(character.avatar) ? `${character.name} (info)` : character.name,
-        }));
-    }
-    if (node.parent && !candidates.some((character) => character.avatar === node.parent)) {
-        parentSelect.append(el('option', { value: node.parent, textContent: `${node.parent} (not installed)` }));
-    }
-    parentSelect.value = node.parent ?? '';
-    parentSelect.addEventListener('change', () => {
-        if (setParent(avatar, parentSelect.value || null)) {
-            onStructureChange();
-        }
-    });
-    grid.append(el('div', {}, [field('Nested under', parentSelect, 'Or just drag the card onto its new parent.')]));
-    panel.append(grid);
-
-    const filterInput = el('input', { type: 'search', className: 'text_pole', placeholder: 'Filter lorebooks…' });
-    const booksSelect = el('select', { className: 'text_pole ch-books-select', multiple: true });
-
-    const worldNames = typeof context.getWorldInfoNames === 'function' ? context.getWorldInfoNames() : [];
-    for (const name of worldNames) {
-        booksSelect.append(el('option', { value: name, textContent: name, selected: node.books.includes(name) }));
-    }
-    for (const name of node.books.filter((book) => !worldNames.includes(book))) {
-        booksSelect.append(el('option', { value: name, textContent: `${name} (missing)`, selected: true }));
-    }
-
-    filterInput.addEventListener('input', () => {
-        const needle = filterInput.value.trim().toLowerCase();
-        for (const option of booksSelect.options) {
-            option.hidden = Boolean(needle) && !option.value.toLowerCase().includes(needle) && !option.selected;
-        }
-    });
-
-    const passedDown = el('div', { className: 'ch-hint' });
-    const inheritedList = el('div', { className: 'ch-inherited' });
-
-    const refreshReadouts = async () => {
-        const own = await booksPassedDown(avatar);
-        passedDown.textContent = own.length
-            ? `Everything nested under this card inherits: ${own.join(', ')}`
-            : 'This card has no lorebooks to pass down yet.';
-
-        inheritedList.innerHTML = '';
-        const inherited = await booksInheritedFromAbove(avatar);
-        if (!inherited.length) {
-            inheritedList.append(el('div', {
-                className: 'ch-hint',
-                textContent: 'Nothing sits above this card, so it inherits nothing.',
-            }));
-            return;
-        }
-        for (const item of inherited) {
-            inheritedList.append(el('div', { className: 'ch-inherited-row' }, [
-                el('span', { className: 'ch-inherited-book', textContent: item.book }),
-                el('span', { className: 'ch-inherited-from', textContent: `level ${item.depth} · ${item.source}` }),
-            ]));
-        }
-    };
-
-    booksSelect.addEventListener('change', () => {
-        ensureNode(avatar).books = [...booksSelect.selectedOptions].map((option) => option.value);
-        save();
-        renderChart();
-        renderTray();
-        refreshReadouts();
-    });
-
-    panel.append(field('Extra lorebooks held on this card', filterInput,
-        'Tracked by this extension, so an informational card can carry books without being opened as a character. Ctrl-click or shift-click to pick several.'));
-    panel.append(booksSelect);
-    panel.append(passedDown);
-
-    const cardTextLabel = el('label', { className: 'checkbox_label' });
-    const cardTextCheckbox = el('input', { type: 'checkbox', checked: node.includeCardText });
-    cardTextLabel.append(cardTextCheckbox, el('span', {
-        textContent: 'Inject this card\'s own text as a world info entry',
-    }));
-    cardTextCheckbox.addEventListener('change', () => {
-        ensureNode(avatar).includeCardText = cardTextCheckbox.checked;
-        save();
-        renderChart();
-        renderTray();
-    });
-    panel.append(cardTextLabel);
-    panel.append(el('div', {
-        className: 'ch-hint',
-        textContent: store.injectCardText
-            ? 'Uses the template in the "Informational card text" section above.'
-            : 'Card text injection is switched off globally, so this will have no effect yet.',
-    }));
-
-    panel.append(el('div', { className: 'ch-editor-subhead', textContent: 'Inherited from above' }));
-    panel.append(inheritedList);
-
-    refreshReadouts();
-
-    return panel;
-}
-
-function renderEditor() {
-    const container = document.getElementById('ch_editor');
-    if (!container) {
-        return;
-    }
-
-    container.innerHTML = '';
-
-    if (!selectedAvatar) {
-        // The panel header already explains dragging; no need to say it twice.
-        container.append(el('div', {
-            className: 'ch-hint',
-            textContent: 'Click a card in the chart to edit it.',
-        }));
-        return;
-    }
-
-    container.append(buildCardEditor(selectedAvatar, renderAll));
-}
-
 // ---------------------------------------------------------------- panel chrome
 
 /** Shows what the currently selected character would inherit. */
@@ -1671,7 +2499,10 @@ async function showPreview() {
     const context = getContext();
     const lines = [];
 
-    const result = await resolve(context, selectedAvatar);
+    const speakerOverride = selectedKey && keyType(selectedKey) === NODE_TYPES.CHARACTER
+        ? keyId(selectedKey)
+        : null;
+    const result = await resolve(context, speakerOverride);
 
     if (!result.speaker && !result.plan.size) {
         lines.push('No character is selected, so there is nothing to resolve.');
@@ -1685,8 +2516,8 @@ async function showPreview() {
             .sort((a, b) => a[1].depth - b[1].depth);
 
         lines.push('', chain.length ? 'Ancestors, nearest first:' : 'Ancestors: none.');
-        for (const [avatar, info] of chain) {
-            lines.push(`  ${info.depth}. ${displayName(avatar)}  [${getRole(avatar)}]`);
+        for (const [key, info] of chain) {
+            lines.push(`  ${info.depth}. ${displayName(key)}  [${getRole(key)}]`);
         }
 
         lines.push('', result.loadedBooks.length ? 'Lorebooks pulled in:' : 'Lorebooks pulled in: none.');
@@ -1698,7 +2529,7 @@ async function showPreview() {
         if (result.cardTextEntries.length) {
             lines.push('', 'Card text injected:');
             for (const entry of result.cardTextEntries) {
-                lines.push(`  ${displayName(entry.avatar)} — level ${entry.depth}, ${entry.length} characters`);
+                lines.push(`  ${displayName(entry.key)} — level ${entry.depth}, ${entry.length} characters`);
             }
         }
 
@@ -1769,7 +2600,7 @@ async function importTree(file) {
 
         normalizeNodes();
         save();
-        selectedAvatar = null;
+        selectedKey = null;
         renderAll();
         toastr.success('Hierarchy imported.', 'Character Hierarchy');
     } catch (error) {
@@ -1817,7 +2648,8 @@ function updateCharacterButton() {
 
     const context = getContext();
     const avatar = context.characters?.[context.characterId]?.avatar;
-    const node = avatar ? getNode(avatar) : null;
+    const key = avatar ? charKey(avatar) : null;
+    const node = key ? getNode(key) : null;
 
     button.classList.toggle('ch-active', Boolean(node));
 
@@ -1826,9 +2658,9 @@ function updateCharacterButton() {
         return;
     }
 
-    const ancestors = getAncestors(avatar, Math.max(1, Number(settings().maxDepth) || 1));
-    const path = [displayName(avatar), ...ancestors.map((item) => displayName(item.avatar))].reverse();
-    button.title = `Character Hierarchy — ${getRole(avatar)}\n${path.join(' › ')}`;
+    const ancestors = getAncestors(key, Math.max(1, Number(settings().maxDepth) || 1));
+    const path = [displayName(key), ...ancestors.map((item) => displayName(item.key))].reverse();
+    button.title = `Character Hierarchy — ${getRole(key)}\n${path.join(' › ')}`;
 }
 
 /** Wires the settings drawer to the stored settings. */
@@ -1884,7 +2716,16 @@ function bindSettingsUi() {
     }
 
     document.getElementById('ch_open_drawer')?.addEventListener('click', () => openDrawer());
-    document.getElementById('ch_tray_filter')?.addEventListener('input', () => renderTray());
+    syncFocusButton();
+    document.getElementById('ch_focus')?.addEventListener('click', () => {
+        settings().focusLineage = !settings().focusLineage;
+        getContext().saveSettingsDebounced();
+        syncFocusButton();
+        renderChart();
+    });
+
+    document.getElementById('ch_add_book')?.addEventListener('click', () => addNodeOfType(NODE_TYPES.BOOK));
+    document.getElementById('ch_add_persona')?.addEventListener('click', () => addNodeOfType(NODE_TYPES.PERSONA));
     document.getElementById('ch_preview')?.addEventListener('click', () => showPreview());
     document.getElementById('ch_export')?.addEventListener('click', () => exportTree());
 
@@ -1957,7 +2798,7 @@ function registerSlashCommands() {
                 return '';
             }
             const maxDepth = Math.max(1, Number(settings().maxDepth) || 1);
-            return getAncestors(avatar, maxDepth).map((item) => displayName(item.avatar)).join(', ');
+            return getAncestors(charKey(avatar), maxDepth).map((item) => displayName(item.key)).join(', ');
         },
     }));
 
@@ -1975,15 +2816,15 @@ function registerSlashCommands() {
 
             const requested = String(value ?? '').trim().toLowerCase();
             if (!requested) {
-                return getRole(avatar);
+                return getRole(charKey(avatar));
             }
 
             if (requested !== ROLE.ACTOR && requested !== ROLE.INFO) {
                 toastr.warning('Role must be "actor" or "info".', 'Character Hierarchy');
-                return getRole(avatar);
+                return getRole(charKey(avatar));
             }
 
-            ensureNode(avatar).role = requested;
+            ensureNode(charKey(avatar)).role = requested;
             save();
             renderAll();
             return requested;
@@ -2003,28 +2844,28 @@ function registerSlashCommands() {
             }
 
             if (value === undefined) {
-                const parent = getParent(avatar);
+                const parent = getParent(charKey(avatar));
                 return parent ? displayName(parent) : '';
             }
 
             const requested = String(value ?? '').trim();
 
             if (!requested) {
-                setParent(avatar, null);
+                setParent(charKey(avatar), null);
             } else {
                 const parentAvatar = resolveAvatar(requested);
                 if (!parentAvatar) {
                     toastr.warning(`No character called "${requested}".`, 'Character Hierarchy');
                     return '';
                 }
-                if (!setParent(avatar, parentAvatar)) {
+                if (!setParent(charKey(avatar), charKey(parentAvatar))) {
                     return '';
                 }
             }
 
             renderAll();
 
-            const parent = getParent(avatar);
+            const parent = getParent(charKey(avatar));
             return parent ? displayName(parent) : '';
         },
     }));
@@ -2057,14 +2898,16 @@ async function prewarmAncestors() {
     const maxDepth = Math.max(1, Number(store.maxDepth) || 1);
     const indexes = indexByAvatar();
 
+    /** @type {Set<string>} Node keys this chat can reach. */
     const relevant = new Set();
     const addWithAncestors = (avatar) => {
         if (!avatar) {
             return;
         }
-        relevant.add(avatar);
-        for (const ancestor of getAncestors(avatar, maxDepth)) {
-            relevant.add(ancestor.avatar);
+        const key = charKey(avatar);
+        relevant.add(key);
+        for (const ancestor of getAncestors(key, maxDepth)) {
+            relevant.add(ancestor.key);
         }
     };
 
@@ -2078,8 +2921,10 @@ async function prewarmAncestors() {
         addWithAncestors(member);
     }
 
-    for (const avatar of relevant) {
-        const index = indexes.get(avatar);
+    // Only character cards can be stubs; lorebooks and personas are already in settings.
+    for (const key of relevant) {
+        const { type, id } = parseKey(key);
+        const index = type === NODE_TYPES.CHARACTER ? indexes.get(id) : undefined;
         if (index !== undefined) {
             await unshallow(index);
         }
@@ -2124,6 +2969,7 @@ export async function init() {
     addCharacterButton();
     installCharacterListFilter();
     watchFilterRow();
+    wireCharacterList();
 
     const context = getContext();
     const { eventSource, eventTypes } = context;

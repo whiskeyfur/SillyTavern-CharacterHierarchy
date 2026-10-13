@@ -8,7 +8,8 @@ way to the root.
 Cards are flagged as **actors**, which take part in the roleplay, or **informational**, which
 exist only to hold lore. An informational card is how you represent a house, a city, a guild or
 a kingdom: it never speaks, it just sits in the tree and lends what it knows to everyone
-beneath it.
+beneath it. A **lorebook** or a **persona** can sit in the tree on its own too, with no
+stand-in card at all.
 
 ```
 Kingdom of Aldia          informational   → Aldian Geography, Aldian History
@@ -22,14 +23,13 @@ When Sir Brant speaks, the world info scan sees *Brant's Private Lore*, *Vance F
 Brant's own book. Neither card needs the other's lorebooks attached by hand, and adding a fact
 to *Aldian History* reaches every character in the kingdom at once.
 
-![The Character Hierarchy panel open in SillyTavern: an org chart with Earth at the root,
-North America and USA nested beneath it, and Mary, Paul and Peter side by side on the bottom
-row, each card showing its avatar and role.](media/panel.png)
-
 ## What you get
 
-- A drag-and-drop **org chart** in its own top bar panel, with card avatars, connector lines
-  and a tray for cards that are not in a tree yet.
+- A drag-and-drop **org chart** in its own top bar panel, fed straight from SillyTavern's own
+  character list: drag a character out of the list and onto the chart.
+- **Lorebooks and personas on the chart too**, not just character cards, so a book can sit in
+  the tree without a stand-in card.
+- A **focus mode** that narrows a crowded chart to one character's line.
 - **Inheritance up the whole chain**, not just one level: a grandchild picks up its parent's
   books and its grandparent's.
 - **Actor / informational roles**, so lore containers never have to pretend to be characters.
@@ -41,6 +41,8 @@ row, each card showing its avatar and role.](media/panel.png)
   how far away they were, which card offered them, and what was skipped.
 - A **tri-state filter** in the character list, alongside the favourites and groups toggles,
   for showing only the cards in a hierarchy or hiding them.
+- **Double-click to open** whatever a node stands for: a character's chat, a persona in the
+  persona manager, or a lorebook in the world info editor.
 - **Slash commands** for scripting, and **JSON export/import** for moving a tree between
   installs.
 
@@ -70,19 +72,59 @@ from its corner, like World Info and the other panels.
 
 ## Building a tree
 
-Click the **sitemap icon** in the top bar. The panel shows an org chart of your trees, with a
-tray down the right holding every card that is not in a tree yet.
+Click the **sitemap icon** in the top bar. SillyTavern's character list comes up alongside the
+chart, since that is where new cards are dragged from, and goes back to however you had it when
+you close the chart again. (Not on a phone, where two panels side by side do not fit.)
 
-- **Drag a card onto another card** to nest it underneath.
+- **Drag a character out of the character list** and onto the chart to add it. Rows already on
+  the chart are dimmed while the panel is open, so you can see at a glance what is left; close
+  the panel and the list goes back to normal.
+- **Drag a node onto another node** to nest it underneath.
 - **Drag it onto empty chart space** to make it the root of its own tree.
-- **Drag it back to the tray** to take it out of the hierarchy. Its children are lifted up to
-  its old parent rather than lost.
-- **Click a card** to open its settings under the chart: role, parent, the extra lorebooks it
-  holds, and whether its own text is injected. Everything there applies immediately.
+- **Click a node** to open its settings under the chart, and a small strip of actions directly
+  beneath the node itself. Everything applies immediately. Clicking empty chart space clears
+  the selection again.
+- **Double-click a node** to open the thing it stands for: a character's chat, a persona in the
+  persona manager, or a lorebook in the world info editor.
 
-A drop that would nest a card inside its own descendants is refused — the target outlines in
-red instead of green, and nothing moves. Cards show their avatar, name, role and how many extra
-lorebooks they hold; informational cards have a dashed border.
+A drop that would nest a node inside its own descendants is refused — the target outlines in
+red instead of green, and nothing moves. Nodes show their portrait, name, role and how many
+extra lorebooks they hold; informational cards have a dashed border.
+
+### Focusing on one line
+
+Once you have more than one tree, the chart gets busy. The **crosshairs** button in the panel
+header narrows it to a single line: the selected node, everything above it, and everything
+below it. Other roots and the side branches off shared ancestors drop out of view, and a note
+along the bottom says how many nodes are hidden so a half-empty chart is never a mystery.
+
+The same toggle sits in the action strip under a selected node, and in its right-click menu,
+so it is always within reach of whatever you are looking at. Clicking a different node
+re-focuses on that one. With nothing selected it follows whichever
+character is currently open, so opening the panel mid-chat shows that character's line. The
+toggle is remembered between sessions, and nothing is deleted — it only changes what is drawn.
+
+### Taking something off the chart
+
+Three ways, whichever is nearest to hand:
+
+- **Right-click** the node and choose *Take off the chart*. The same menu offers *Edit*,
+  *Detach from parent* and *Focus on this line*.
+- **Click it**, then use the bin in the strip that appears under it, or in the settings panel.
+- **Drag it off the chart** and let go. The ghost turns red to say what will happen.
+
+Removing a node never touches the card, lorebook or persona itself — it only stops the
+inheritance. Its children are lifted up to its old parent rather than lost.
+
+### Lorebooks and personas
+
+The two buttons in the panel header put a **lorebook** or a **persona** on the chart beside your
+character cards. A lorebook node simply *is* its book: everything nested under it inherits that
+book, with no stand-in character card needed. A persona hands down whichever lorebook is
+assigned to it, and can inject its own description just like an informational card.
+
+Neither ever speaks, so neither has a role to choose, and both are drawn with an icon where a
+card would show its portrait.
 
 The **sitemap button** in a character's own panel, next to the globe, opens the hierarchy panel
 with that card already selected. It lights up when the card is part of a tree, and its tooltip
@@ -177,10 +219,12 @@ The **magnifying glass** in the panel header shows all of that for the selected 
 running a generation: the ancestor chain, the books pulled in and where each came from, the
 card text injected, and what was skipped because something else already scans it.
 
-The **export** and **import** buttons move a tree between installs as JSON. Cards are tracked
-by avatar file name, so an imported tree lines up as long as the same cards are installed. A
-card that is missing is shown as `name.png (not installed)` rather than dropped, so a tree
-survives a card being renamed and restored.
+The **export** and **import** buttons move a tree between installs as JSON. Nodes are keyed by
+type and id — `char:Seraphina.png`, `book:Eldoria`, `persona:user.png` — so an imported tree
+lines up as long as the same things are installed. Anything missing is shown as
+`(not installed)` rather than dropped, so a tree survives something being renamed and restored.
+Exports made before lorebooks and personas could sit on the chart used bare avatar names, and
+are migrated on import.
 
 ## Slash commands
 
@@ -210,7 +254,9 @@ On each scan it:
 
 1. Reads the speaking character from the context. In a group chat SillyTavern has already
    pointed `characterId` at the drafted member, so the speaker is whoever is about to talk.
-2. Walks up the tree from that card, collecting each ancestor's books.
+2. Walks up the tree from that card, collecting what each node above it offers: a card's own
+   Character Lore and linked extras, the book a lorebook node *is*, the book assigned to a
+   persona, and any extra books pinned to a node in this extension.
 3. Drops books something else is already scanning — the global selection, the chat lorebook,
    the persona lorebook, and the speaker's own card books. Nothing is loaded twice.
 4. Collapses books reached through more than one ancestor down to the nearest one.
@@ -244,8 +290,9 @@ from the real `drawer.html`, so the markup and the code that binds to it cannot 
 the top bar drawer is opened and closed through its own toggle; cards are dragged around the
 chart with synthesised pointer events and the resulting tree is checked; the chart's geometry
 and connector paths are asserted; the character list filter is cycled through its three states
-and the resulting list inspected; and `WORLDINFO_ENTRIES_LOADED` is fired to confirm exactly
-which entries come back.
+and the resulting list inspected; the right-click menu, the focus mode and the double-click
+targets are driven through the same events a browser would send; and
+`WORLDINFO_ENTRIES_LOADED` is fired to confirm exactly which entries come back.
 
 `npm run test:fixtures` runs the demo set through the same machinery, so the numbers quoted in
 `fixtures/README.md` cannot drift away from what the extension actually does.
@@ -265,6 +312,9 @@ says why in the console:
 | `doNavbarIconClick` from `script.js` | Opening and closing the panel like every other drawer | Build error at load |
 | `entitiesFilter` and `filters.js` | The character list filter | Build error at load |
 | `#rm_characters_block .rm_tag_filter` | Placing the filter button | Logs a warning; everything else still works |
+| `#rm_print_characters_block` and `.character_select[data-chid]` | Dragging characters onto the chart, and dimming the ones already there | Logs a warning; lorebooks and personas can still be added from the panel header |
+| `power_user.personas` and `persona_descriptions` | Putting personas on the chart | Personas simply do not appear as candidates |
+| `openWorldInfoEditor` and `getUserAvatars` | Double-clicking a lorebook or persona to open it | Build error at load |
 | `dragElement` from `RossAscends-mods.js` | Dragging and resizing the panel, and only when *Movable UI panels* is on | Logs a warning; the panel still works, just fixed in place |
 
 The world info side — the part that actually matters — depends only on the event and on

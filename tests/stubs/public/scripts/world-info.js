@@ -14,3 +14,7 @@ export async function loadWorldInfo(name) {
     return globalThis.__books[name] ?? null;
 }
 export function setGlobalBooks(list) { selected_world_info = list; }
+
+export function openWorldInfoEditor(worldName) {
+    globalThis.__worldInfoOpened = worldName;
+}

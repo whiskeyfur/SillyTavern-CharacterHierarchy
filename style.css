@@ -106,43 +106,6 @@
     stroke-width: 2;
 }
 
-.ch-tray-pane {
-    flex: 0 0 168px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-
-.ch-tray-head {
-    font-size: calc(var(--mainFontSize) * 0.85);
-    opacity: 0.75;
-}
-
-.ch-tray-filter {
-    margin: 0;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.ch-tray {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 6px;
-    border: 1px dashed var(--SmartThemeBorderColor);
-    border-radius: 6px;
-}
-
-.ch-tray.ch-drop-ok {
-    border-style: solid;
-    border-color: var(--SmartThemeQuoteColor);
-    background-color: var(--white20a);
-}
-
 /* ---------------------------------------------------------------- card boxes */
 
 .ch-node {
@@ -251,11 +214,159 @@
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
+/*
+ * The right-click menu for a node. On the body rather than inside the chart, so the chart
+ * pane's own scrolling cannot clip it.
+ */
+.ch-context-menu {
+    position: fixed;
+    z-index: 10001;
+    min-width: 170px;
+    padding: 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background-color: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.ch-context-title {
+    padding: 4px 8px 6px;
+    font-weight: bold;
+    font-size: calc(var(--mainFontSize) * 0.85);
+    opacity: 0.75;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ch-context-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 5px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: calc(var(--mainFontSize) * 0.9);
+}
+
+.ch-context-item:hover {
+    background-color: var(--white20a);
+}
+
+.ch-context-danger:hover {
+    color: var(--crimson70a, crimson);
+}
+
+/* A header toggle that is currently on. */
+.ch-panel-head .menu_button.ch-toggle-on {
+    color: var(--SmartThemeQuoteColor);
+    box-shadow: 0 0 0 1px var(--SmartThemeQuoteColor) inset;
+}
+
+/* Says what focus mode is hiding, so a half-empty chart is never a mystery. */
+.ch-focus-note {
+    position: absolute;
+    left: var(--ch-pad);
+    bottom: 0;
+    font-size: calc(var(--mainFontSize) * 0.8);
+    opacity: 0.7;
+    pointer-events: none;
+}
+
 .ch-empty {
     opacity: 0.6;
     padding: 0.75em;
     text-align: center;
     font-size: calc(var(--mainFontSize) * 0.85);
+}
+
+/* An icon stands in where there is no portrait: lorebooks, and anything uninstalled. */
+.ch-node-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background-color: var(--white20a);
+    color: var(--SmartThemeQuoteColor);
+}
+
+.ch-node-book {
+    border-style: dashed;
+}
+
+/* The actions that appear directly under the selected node. */
+.ch-node-actions {
+    position: absolute;
+    display: flex;
+    gap: 4px;
+    margin: var(--ch-pad) 0 0 var(--ch-pad);
+    padding: 3px 5px;
+    transform: translateY(4px);
+    border: 1px solid var(--SmartThemeQuoteColor);
+    border-radius: 6px;
+    background-color: var(--SmartThemeBlurTintColor);
+    z-index: 3;
+}
+
+.ch-node-action {
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: calc(var(--mainFontSize) * 0.9);
+    opacity: 0.8;
+}
+
+.ch-node-action:hover {
+    opacity: 1;
+    background-color: var(--white20a);
+}
+
+.ch-node-action-remove:hover {
+    color: var(--crimson70a, crimson);
+}
+
+.ch-node-action.ch-toggle-on {
+    color: var(--SmartThemeQuoteColor);
+    opacity: 1;
+    background-color: var(--white20a);
+}
+
+/* Let go here and the node comes off the chart. */
+.ch-ghost-remove {
+    border-color: var(--crimson70a, crimson) !important;
+    box-shadow: 0 0 0 2px var(--crimson70a, crimson), 0 4px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+/*
+ * Rows wired as drag sources. Without this, pressing on the name or the description starts a
+ * text selection, the browser takes the pointer over for it and fires pointercancel, and the
+ * drag dies before it begins — so only the avatar was draggable. SillyTavern does the same on
+ * its own draggable rows.
+ */
+.character_select[data-ch-drag-wired] {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/*
+ * Rows in SillyTavern's own character list that are already on the chart. Dimmed rather than
+ * disabled: dragging one again just re-parents it.
+ */
+.character_select.ch-on-chart {
+    opacity: 0.45;
+}
+
+.character_select.ch-on-chart .ch_name::after {
+    content: ' \f0e8';
+    font-family: 'Font Awesome 6 Free', 'Font Awesome 5 Free';
+    font-weight: 900;
+    font-size: 0.8em;
+    opacity: 0.8;
+    margin-left: 0.4em;
 }
 
 /* ---------------------------------------------------------------- card editor */
@@ -374,16 +485,5 @@
     .ch-chart-pane {
         height: 320px;
         flex: 0 0 auto;
-    }
-
-    .ch-tray-pane {
-        flex: 0 0 auto;
-    }
-
-    .ch-tray {
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        max-height: 180px;
     }
 }
