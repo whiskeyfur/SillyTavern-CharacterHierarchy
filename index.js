@@ -1926,6 +1926,7 @@ function renderAll() {
 
     updateCharacterButton();
     decorateCharacterList();
+    syncPanelInset();
 
     // No point laying out a chart nobody can see; opening the panel repaints it.
     if (!isDrawerOpen()) {
@@ -2324,6 +2325,29 @@ function watchFilterRow() {
  */
 let listHold = null;
 
+/**
+ * Keeps the panel clear of SillyTavern's character list rather than running underneath it.
+ *
+ * The list is pinned to the right edge, so narrowing a centred panel never gets out of its
+ * way — the right edge has to be pulled in by however wide the list actually is. Measured
+ * rather than recomputed from SillyTavern's own formula, so a panel the user has resized is
+ * still accounted for.
+ */
+function syncPanelInset() {
+    const panel = document.getElementById(DRAWER_ID);
+
+    if (!panel) {
+        return;
+    }
+
+    const list = document.querySelector(CHARACTER_PANEL.content);
+    const beside = isCharacterListOpen() && list instanceof HTMLElement;
+    const width = beside ? Math.round(list.getBoundingClientRect().width) : 0;
+
+    panel.classList.toggle('ch-beside-list', beside && width > 0);
+    panel.style.setProperty('--ch-list-width', `${width}px`);
+}
+
 /** @returns {boolean} True when SillyTavern's character list is on screen. */
 function isCharacterListOpen() {
     return Boolean(document.querySelector(CHARACTER_PANEL.content)?.classList.contains('openDrawer'));
@@ -2491,6 +2515,14 @@ async function installDrawer() {
     // through the handler above. Watching the classes themselves catches every route in and
     // out — another drawer, a pin, anything programmatic — rather than just the ones we can
     // guess at from clicks.
+    // The list can be opened or closed on its own while the chart is up, which changes how
+    // much room the chart has.
+    const listPanel = document.querySelector(CHARACTER_PANEL.content);
+    if (listPanel) {
+        new MutationObserver(() => syncPanelInset())
+            .observe(listPanel, { attributes: true, attributeFilter: ['class'] });
+    }
+
     let wasOpen = isDrawerOpen();
     new MutationObserver(() => {
         const open = isDrawerOpen();

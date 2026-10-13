@@ -902,9 +902,22 @@ check('and the chart stays open beside it', drawerIsOpen());
 check('the list is pinned for the moment, or opening ours would shut it',
     listPanel.classList.contains('pinnedOpen') && listIcon.classList.contains('drawerPinnedOpen'));
 
+// The list sits above the panel on the right, so the panel's right edge has to come in by
+// however wide the list is, or the two overlap. jsdom has no layout, so the measurement is
+// stubbed to something non-zero.
+listPanel.getBoundingClientRect = () => ({ width: 320, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 });
+await redraw();
+check('the panel is held clear of the character list',
+    drawerContent.classList.contains('ch-beside-list'));
+check('by exactly the width the list is taking',
+    drawerContent.style.getPropertyValue('--ch-list-width') === '320px',
+    drawerContent.style.getPropertyValue('--ch-list-width'));
+
 await setDrawer(false);
 await releaseTick();
 check('closing the chart puts the list back', !listOpen());
+check('and the panel is no longer held clear of it',
+    !drawerContent.classList.contains('ch-beside-list'));
 check('and takes the temporary pin off again',
     !listPanel.classList.contains('pinnedOpen') && !listIcon.classList.contains('drawerPinnedOpen'));
 

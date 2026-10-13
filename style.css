@@ -29,6 +29,16 @@
     min-height: 200px !important;
 }
 
+/*
+ * SillyTavern's character list is pinned to the right edge and sits above this panel, so when
+ * it is on screen the panel's right edge is pulled in by its width. The base rule leaves
+ * left: 0 and margin: 0 auto in place, so the panel simply re-centres in what is left.
+ */
+.ch-drawer.ch-beside-list {
+    right: var(--ch-list-width, 0px);
+    max-width: calc(100vw - var(--ch-list-width, 0px) - 16px);
+}
+
 .ch-drawer-inner {
     padding: 0 5px 5px;
 }
