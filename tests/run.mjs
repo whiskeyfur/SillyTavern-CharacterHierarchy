@@ -411,10 +411,12 @@ function paintCharacterList() {
         const row = document.createElement('div');
         row.className = 'character_select';
         row.dataset.chid = String(index);
+        const avatar = document.createElement('img');
+        avatar.src = `/thumbnail?type=avatar&file=${character.avatar}`;
         const name = document.createElement('span');
         name.className = 'ch_name';
         name.textContent = character.name;
-        row.append(name);
+        row.append(avatar, name);
         charList.append(row);
     });
 }
@@ -429,6 +431,13 @@ check('character list rows become drag sources',
     [...charList.querySelectorAll('.character_select')].every((row) => row.dataset.chDragWired === 'true'));
 check('no row is dimmed while the chart is empty',
     !charList.querySelector('.ch-on-chart'));
+
+// A native image drag out of a row ends up in SillyTavern's character importer, which then
+// reports the thumbnail as a corrupt card. Only our own pointer drag should run.
+const nativeDrag = new dom.window.Event('dragstart', { bubbles: true, cancelable: true });
+listRow('Brant.png').querySelector('img').dispatchEvent(nativeDrag);
+check('a native image drag out of a list row is suppressed', nativeDrag.defaultPrevented);
+check('rows are not natively draggable', listRow('Brant.png').draggable === false);
 
 // ---------- T16: dragging a character out of the list ----------
 dragTo(listRow('Aldia.png'), chart);

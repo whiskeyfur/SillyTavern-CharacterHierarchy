@@ -1444,6 +1444,14 @@ function decorateCharacterList() {
 
         if (!row.dataset.chDragWired) {
             row.dataset.chDragWired = 'true';
+
+            // A row contains the card's thumbnail, and browsers drag images natively. That
+            // drag ends in a drop on the page, where SillyTavern's importer takes it for a
+            // character file and reports it as corrupt. Suppress it so only our own
+            // pointer-driven drag runs. dragstart bubbles, so this covers the image too.
+            row.draggable = false;
+            row.addEventListener('dragstart', (event) => event.preventDefault());
+
             attachDragHandlers(row, charKey(avatar), 'list');
         }
     }
