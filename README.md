@@ -22,9 +22,9 @@ When Sir Brant speaks, the world info scan sees *Brant's Private Lore*, *Vance F
 Brant's own book. Neither card needs the other's lorebooks attached by hand, and adding a fact
 to *Aldian History* reaches every character in the kingdom at once.
 
-![The Character Hierarchy panel: an org chart with Earth at the root, North America and USA
-nested beneath it and Peter, Paul and Mary on the bottom row, a tray of cards not yet in a tree
-down the right, and the selected card's settings in a panel underneath.](media/panel.png)
+![The Character Hierarchy panel open in SillyTavern: an org chart with Earth at the root,
+North America and USA nested beneath it, and Mary, Paul and Peter side by side on the bottom
+row, each card showing its avatar and role.](media/panel.png)
 
 ## What you get
 

@@ -1540,9 +1540,10 @@ function renderEditor() {
     container.innerHTML = '';
 
     if (!selectedAvatar) {
+        // The panel header already explains dragging; no need to say it twice.
         container.append(el('div', {
             className: 'ch-hint',
-            textContent: 'Click a card to set its role and the lorebooks it passes down. Drag a card onto another to nest it, onto the empty chart to make it a root, or back to the tray to take it out.',
+            textContent: 'Click a card in the chart to edit it.',
         }));
         return;
     }
