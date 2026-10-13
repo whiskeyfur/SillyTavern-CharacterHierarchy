@@ -914,16 +914,27 @@ listPanel.classList.remove('pinnedOpen');
 listIcon.classList.remove('drawerPinnedOpen');
 userTogglesList();
 
-// Another drawer opening closes ours without going through our toggle.
+// Another drawer opening closes ours by swapping the classes, never touching our toggle.
 await setDrawer(true);
+setTree({ 'Aldia.png': node(null), 'Brant.png': node('Aldia.png') });
+await redraw();
 check('the list came up again', listOpen());
-document.querySelector('#WI-SP-button')?.appendChild(Object.assign(
-    document.createElement('div'), { className: 'drawer-toggle' }));
-document.querySelector('#WI-SP-button .drawer-toggle').dispatchEvent(
-    new dom.window.MouseEvent('click', { bubbles: true }));
+check('and rows on the chart are dimmed', !!charList.querySelector('.ch-on-chart'));
+
 drawerContent.classList.replace('openDrawer', 'closedDrawer'); // what doNavbarIconClick does
 await releaseTick();
 check('a drawer opening elsewhere still releases the list', !listOpen());
+check('and clears the dimming it left behind',
+    !charList.querySelector('.ch-on-chart'),
+    [...charList.querySelectorAll('.ch-on-chart')].length + ' rows still dimmed');
+
+// and back in again the same way
+drawerContent.classList.replace('closedDrawer', 'openDrawer');
+await releaseTick();
+check('reopening by class alone repaints the chart',
+    chart.querySelectorAll('.ch-node').length === 2,
+    String(chart.querySelectorAll('.ch-node').length));
+check('and the dimming comes back', !!charList.querySelector('.ch-on-chart'));
 
 await setDrawer(true);
 

@@ -2468,17 +2468,26 @@ async function installDrawer() {
         renderAll();
     });
 
-    // Opening any other drawer closes ours without going through the handler above, so the
-    // character list would be left held open. Tidy up whenever our panel ends up shut.
-    holder.addEventListener('click', (event) => {
-        if (event.target instanceof Element && event.target.closest('.drawer-toggle')) {
-            setTimeout(() => {
-                if (!isDrawerOpen()) {
-                    releaseCharacterList();
-                }
-            }, 0);
+    // Opening any other drawer closes ours by swapping these classes, without ever going
+    // through the handler above. Watching the classes themselves catches every route in and
+    // out — another drawer, a pin, anything programmatic — rather than just the ones we can
+    // guess at from clicks.
+    let wasOpen = isDrawerOpen();
+    new MutationObserver(() => {
+        const open = isDrawerOpen();
+
+        if (open === wasOpen) {
+            return;
         }
-    }, true);
+        wasOpen = open;
+
+        if (!open) {
+            releaseCharacterList();
+        }
+
+        // Paints the chart on the way in, and clears the character list dimming on the way out.
+        renderAll();
+    }).observe(content, { attributes: true, attributeFilter: ['class'] });
 
     const context = getContext();
     if (context.powerUserSettings?.movingUI && !context.isMobile?.()) {
