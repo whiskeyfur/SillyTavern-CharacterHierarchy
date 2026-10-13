@@ -633,6 +633,44 @@ check('clicking the chart background deselects', !nodeFor(chart, K('Brant.png'))
 check('the action strip goes with it', !chart.querySelector('.ch-node-actions'));
 check('the editor falls back to its hint', editor.textContent.includes('Click a node'));
 
+// ---------- dragging the backdrop pans the chart ----------
+// jsdom has no layout, so scroll offsets are stubbed onto the pane to be writable.
+const pane = chart.parentElement;
+Object.defineProperty(pane, 'scrollLeft', { value: 0, writable: true, configurable: true });
+Object.defineProperty(pane, 'scrollTop', { value: 0, writable: true, configurable: true });
+
+await settleClick();
+clickCard(nodeFor(chart, K('Brant.png')));   // something selected, to prove a pan keeps it
+chart.dispatchEvent(pev('pointerdown', 500, 400));
+chart.dispatchEvent(pev('pointermove', 460, 370));
+check('dragging the backdrop scrolls the pane against the pointer',
+    pane.scrollLeft === 40 && pane.scrollTop === 30,
+    `${pane.scrollLeft}, ${pane.scrollTop}`);
+check('and marks the pane as panning', pane.classList.contains('ch-panning'));
+
+chart.dispatchEvent(pev('pointermove', 450, 360));
+check('it keeps following the pointer',
+    pane.scrollLeft === 50 && pane.scrollTop === 40, `${pane.scrollLeft}, ${pane.scrollTop}`);
+
+chart.dispatchEvent(pev('pointerup', 450, 360));
+check('releasing ends the pan', !pane.classList.contains('ch-panning'));
+check('a pan does not clear the selection',
+    nodeFor(chart, K('Brant.png')).classList.contains('ch-node-selected'));
+
+// a press on a node must not pan
+pane.scrollLeft = 0;
+nodeFor(chart, K('Brant.png')).dispatchEvent(pev('pointerdown', 500, 400));
+chart.dispatchEvent(pev('pointermove', 400, 400));
+check('dragging a node does not pan the chart', pane.scrollLeft === 0, String(pane.scrollLeft));
+chart.dispatchEvent(pev('pointerup', 400, 400));
+
+// and a click still deselects
+await settleClick();
+clickCard(nodeFor(chart, K('Brant.png')));
+chart.dispatchEvent(pev('pointerdown', 500, 400));
+chart.dispatchEvent(pev('pointerup', 501, 401));
+check('a click on the backdrop still deselects', !chart.querySelector('.ch-node-selected'));
+
 // a drag that ends on the backdrop has just re-rooted a node, so it must stay selected
 await settleClick();
 clickCard(nodeFor(chart, K('Brant.png')));

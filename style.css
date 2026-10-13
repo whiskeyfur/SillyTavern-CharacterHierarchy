@@ -111,6 +111,16 @@
     box-sizing: border-box;
 }
 
+/* The backdrop is draggable to pan the chart. */
+.ch-chart {
+    cursor: grab;
+}
+
+.ch-chart-pane.ch-panning,
+.ch-chart-pane.ch-panning .ch-chart {
+    cursor: grabbing;
+}
+
 .ch-chart.ch-drop-ok {
     outline: 2px dashed var(--SmartThemeQuoteColor);
     outline-offset: -4px;

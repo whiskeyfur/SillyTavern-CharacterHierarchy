@@ -89,7 +89,7 @@ you close the chart again. (Not on a phone, where two panels side by side do not
 - **Drag it onto empty chart space** to make it the root of its own tree.
 - **Click a node** to open its settings under the chart, and a small strip of actions directly
   beneath the node itself. Everything applies immediately. Clicking empty chart space clears
-  the selection again.
+  the selection again, and **dragging empty chart space pans** a tree too big to fit.
 - **Double-click a node** to open the thing it stands for: a character's chat, a persona in the
   persona manager, or a lorebook in the world info editor.
 

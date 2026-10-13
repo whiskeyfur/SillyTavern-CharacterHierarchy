@@ -1821,6 +1821,51 @@ function renderNodeActions(container, positions) {
 /** Where a press on empty chart space began, so a click can be told from a drag. */
 let backgroundPress = null;
 
+/** A pan in progress on the chart's backdrop, or null. */
+let chartPan = null;
+
+/**
+ * Drags the chart under the cursor. The pane is what actually scrolls, so panning is just
+ * moving its scroll offset against the pointer.
+ */
+function onChartPan(event) {
+    if (!chartPan) {
+        return;
+    }
+
+    const x = event.clientX ?? 0;
+    const y = event.clientY ?? 0;
+    const dx = x - chartPan.x;
+    const dy = y - chartPan.y;
+
+    // Below the threshold this is still a click, which clears the selection on release.
+    if (!chartPan.panning && Math.hypot(dx, dy) < DRAG_THRESHOLD) {
+        return;
+    }
+
+    if (!chartPan.panning) {
+        chartPan.panning = true;
+        chartPan.pane.classList.add('ch-panning');
+    }
+
+    chartPan.pane.scrollLeft -= dx;
+    chartPan.pane.scrollTop -= dy;
+    chartPan.x = x;
+    chartPan.y = y;
+}
+
+function onChartPanEnd() {
+    if (!chartPan) {
+        return;
+    }
+
+    chartPan.pane.classList.remove('ch-panning');
+    document.removeEventListener('pointermove', onChartPan);
+    document.removeEventListener('pointerup', onChartPanEnd);
+    document.removeEventListener('pointercancel', onChartPanEnd);
+    chartPan = null;
+}
+
 /** How close together two clicks on a node count as a double click. */
 const DOUBLE_CLICK_MS = 400;
 
@@ -1890,9 +1935,30 @@ function wireChartBackground(container) {
     container.dataset.chBackgroundWired = 'true';
 
     container.addEventListener('pointerdown', (event) => {
-        backgroundPress = event.target === container
-            ? { x: event.clientX ?? 0, y: event.clientY ?? 0 }
-            : null;
+        if (event.target !== container || (event.button !== undefined && event.button !== 0)) {
+            backgroundPress = null;
+            return;
+        }
+
+        backgroundPress = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
+
+        // Touch already scrolls the pane on its own; panning as well would move it twice.
+        if (event.pointerType === 'touch') {
+            return;
+        }
+
+        const pane = container.parentElement;
+        if (!pane) {
+            return;
+        }
+
+        // Stops the browser starting a selection drag from the backdrop instead.
+        event.preventDefault();
+
+        chartPan = { pane, x: event.clientX ?? 0, y: event.clientY ?? 0, panning: false };
+        document.addEventListener('pointermove', onChartPan);
+        document.addEventListener('pointerup', onChartPanEnd);
+        document.addEventListener('pointercancel', onChartPanEnd);
     });
 
     container.addEventListener('pointerup', (event) => {
