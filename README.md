@@ -8,7 +8,8 @@ way to the root.
 Cards are flagged as **actors**, which take part in the roleplay, or **informational**, which
 exist only to hold lore. An informational card is how you represent a house, a city, a guild or
 a kingdom: it never speaks, it just sits in the tree and lends what it knows to everyone
-beneath it.
+beneath it. A **lorebook** or a **persona** can sit in the tree on its own too, with no
+stand-in card at all.
 
 ```
 Kingdom of Aldia          informational   → Aldian Geography, Aldian History
@@ -21,10 +22,6 @@ When Sir Brant speaks, the world info scan sees *Brant's Private Lore*, *Vance F
 *Aldian Geography* and *Aldian History*. When Mira speaks she gets the same inheritance, minus
 Brant's own book. Neither card needs the other's lorebooks attached by hand, and adding a fact
 to *Aldian History* reaches every character in the kingdom at once.
-
-![The Character Hierarchy panel open in SillyTavern: an org chart with Earth at the root,
-North America and USA nested beneath it, and Mary, Paul and Peter side by side on the bottom
-row, each card showing its avatar and role.](media/panel.png)
 
 ## What you get
 
@@ -44,6 +41,8 @@ row, each card showing its avatar and role.](media/panel.png)
   how far away they were, which card offered them, and what was skipped.
 - A **tri-state filter** in the character list, alongside the favourites and groups toggles,
   for showing only the cards in a hierarchy or hiding them.
+- **Double-click to open** whatever a node stands for: a character's chat, a persona in the
+  persona manager, or a lorebook in the world info editor.
 - **Slash commands** for scripting, and **JSON export/import** for moving a tree between
   installs.
 
@@ -255,7 +254,9 @@ On each scan it:
 
 1. Reads the speaking character from the context. In a group chat SillyTavern has already
    pointed `characterId` at the drafted member, so the speaker is whoever is about to talk.
-2. Walks up the tree from that card, collecting each ancestor's books.
+2. Walks up the tree from that card, collecting what each node above it offers: a card's own
+   Character Lore and linked extras, the book a lorebook node *is*, the book assigned to a
+   persona, and any extra books pinned to a node in this extension.
 3. Drops books something else is already scanning — the global selection, the chat lorebook,
    the persona lorebook, and the speaker's own card books. Nothing is loaded twice.
 4. Collapses books reached through more than one ancestor down to the nearest one.
@@ -289,8 +290,9 @@ from the real `drawer.html`, so the markup and the code that binds to it cannot 
 the top bar drawer is opened and closed through its own toggle; cards are dragged around the
 chart with synthesised pointer events and the resulting tree is checked; the chart's geometry
 and connector paths are asserted; the character list filter is cycled through its three states
-and the resulting list inspected; and `WORLDINFO_ENTRIES_LOADED` is fired to confirm exactly
-which entries come back.
+and the resulting list inspected; the right-click menu, the focus mode and the double-click
+targets are driven through the same events a browser would send; and
+`WORLDINFO_ENTRIES_LOADED` is fired to confirm exactly which entries come back.
 
 `npm run test:fixtures` runs the demo set through the same machinery, so the numbers quoted in
 `fixtures/README.md` cannot drift away from what the extension actually does.
