@@ -22,6 +22,10 @@ When Sir Brant speaks, the world info scan sees *Brant's Private Lore*, *Vance F
 Brant's own book. Neither card needs the other's lorebooks attached by hand, and adding a fact
 to *Aldian History* reaches every character in the kingdom at once.
 
+![The Character Hierarchy panel: an org chart with Earth at the root, North America and USA
+nested beneath it and Peter, Paul and Mary on the bottom row, a tray of cards not yet in a tree
+down the right, and the selected card's settings in a panel underneath.](media/panel.png)
+
 ## What you get
 
 - A drag-and-drop **org chart** in its own top bar panel, with card avatars, connector lines
@@ -221,6 +225,12 @@ which entries come back.
 ## Requirements
 
 A SillyTavern build that emits `WORLDINFO_ENTRIES_LOADED` from `getSortedEntries()`, and whose
-top bar is `#top-settings-holder`. Developed and tested against SillyTavern `1.19.0` (commit `06bde93`). If the event is
-missing the extension says so in the console and on screen at startup and stays inactive rather
-than failing quietly.
+top bar is `#top-settings-holder`. Developed and tested against SillyTavern `1.19.0`
+(commit `06bde93`). If the event is missing, the extension says so in the console and on screen
+at startup and stays inactive rather than failing quietly.
+
+## License
+
+[GNU Affero General Public License v3.0 or later](LICENSE), the same license SillyTavern itself
+uses. If you run a modified version of this extension on a server other people interact with
+over a network, the AGPL requires you to offer them the modified source.

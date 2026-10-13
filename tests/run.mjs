@@ -425,6 +425,15 @@ check('siblings sit in adjacent columns',
 check('a parent is centred over its children',
     pos('Vance.png')[0] === (pos('Brant.png')[0] + pos('Mira.png')[0]) / 2,
     `${pos('Vance.png')[0]} vs ${(pos('Brant.png')[0] + pos('Mira.png')[0]) / 2}`);
+// Aldia over Vance over {Brant, Mira}: widest leaf at x=134, so 134 + 116 wide and
+// 3 rows + 2 gaps tall, plus 14px of padding on each side.
+check('the chart box includes its own padding, so a small tree never scrolls',
+    chart.style.width === '278px' && chart.style.height === '448px',
+    `${chart.style.width} x ${chart.style.height}`);
+check('the padding is published to CSS from the one place it is defined',
+    chart.style.getPropertyValue('--ch-pad') === '14px',
+    chart.style.getPropertyValue('--ch-pad'));
+
 check('one connector per parent-child link',
     chart.querySelectorAll('svg.ch-links path.ch-link').length === 3,
     String(chart.querySelectorAll('svg.ch-links path.ch-link').length));

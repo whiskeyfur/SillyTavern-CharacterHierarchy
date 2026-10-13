@@ -56,7 +56,7 @@
     display: flex;
     align-items: stretch;
     gap: 0.5em;
-    height: min(52vh, 540px);
+    height: min(60vh, 620px);
     min-height: 240px;
 }
 
@@ -74,7 +74,9 @@
 /*
  * The chart sizes itself to the laid-out tree, so the pane can scroll around it. Absolutely
  * positioned children resolve against the padding edge, not the padding box, so the same
- * --ch-pad offsets the boxes and the connector layer by hand.
+ * --ch-pad offsets the boxes and the connector layer by hand. --ch-pad is set from JS, which
+ * also adds it back on to the width and height; with a border box that keeps a tree smaller
+ * than the pane from scrolling at all.
  */
 .ch-chart {
     --ch-pad: 14px;
@@ -82,7 +84,7 @@
     min-width: 100%;
     min-height: 100%;
     padding: var(--ch-pad);
-    box-sizing: content-box;
+    box-sizing: border-box;
 }
 
 .ch-chart.ch-drop-ok {
@@ -119,6 +121,8 @@
 
 .ch-tray-filter {
     margin: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .ch-tray {

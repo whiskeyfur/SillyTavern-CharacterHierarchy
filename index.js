@@ -1,3 +1,21 @@
+/*
+ * Character Hierarchy — a SillyTavern extension that nests character cards under one another
+ * so world info is inherited up the whole tree.
+ *
+ * Copyright (C) 2026 John Walker II
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU Affero General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this
+ * program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 /**
  * Character Hierarchy — nest SillyTavern character cards and inherit world info up the tree.
  *
@@ -696,6 +714,9 @@ const COLUMN_GAP = 18;
 const ROW_GAP = 48;
 const ROOT_GAP = 34;
 
+/** Breathing room inside the chart. Pushed into CSS so the two cannot drift apart. */
+const CHART_PADDING = 14;
+
 /** How far the pointer must travel before a click becomes a drag. */
 const DRAG_THRESHOLD = 4;
 
@@ -1174,8 +1195,12 @@ function renderChart() {
 
     container.innerHTML = '';
     container.dataset.chDrop = 'root';
-    container.style.width = positions.size ? `${width}px` : '';
-    container.style.height = positions.size ? `${height}px` : '';
+    container.style.setProperty('--ch-pad', `${CHART_PADDING}px`);
+
+    // The chart is a border box, so the padding has to be added back on to the laid-out size;
+    // otherwise min-width/min-height of 100% would always overflow the pane by the padding.
+    container.style.width = positions.size ? `${width + CHART_PADDING * 2}px` : '';
+    container.style.height = positions.size ? `${height + CHART_PADDING * 2}px` : '';
 
     if (!positions.size) {
         container.append(el('div', {
