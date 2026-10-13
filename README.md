@@ -114,8 +114,9 @@ toggle is remembered between sessions, and nothing is deleted — it only change
 
 Three ways, whichever is nearest to hand:
 
-- **Right-click** the node and choose *Take off the chart*. The same menu offers *Edit*,
-  *Detach from parent* and *Focus on this line*.
+- **Right-click** the node and choose *Take off the chart*. The same menu also opens whatever
+  the node stands for — *Open chat*, *Open in the persona manager*, *Open in the world info
+  editor* — and offers *Settings on this chart*, *Detach from parent* and *Focus on this line*.
 - **Click it**, then use the bin in the strip that appears under it, or in the settings panel.
 - **Drag it off the chart** and let go. The ghost turns red to say what will happen.
 

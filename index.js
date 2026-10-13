@@ -1153,6 +1153,13 @@ function layoutForest() {
 
 // ---------------------------------------------------------------- cards
 
+/** What double-clicking a node, or its menu's open entry, actually opens. */
+const OPEN_TARGETS = Object.freeze({
+    [NODE_TYPES.CHARACTER]: { label: 'Open chat', icon: 'fa-comments' },
+    [NODE_TYPES.PERSONA]: { label: 'Open in the persona manager', icon: 'fa-user' },
+    [NODE_TYPES.BOOK]: { label: 'Open in the world info editor', icon: 'fa-book-atlas' },
+});
+
 /** Font Awesome icons standing in for the things that have no portrait. */
 const NODE_ICONS = Object.freeze({
     [NODE_TYPES.BOOK]: 'fa-book-atlas',
@@ -1288,7 +1295,12 @@ function showNodeMenu(key, x, y) {
     };
 
     menu.append(el('div', { className: 'ch-context-title', textContent: displayName(key) }));
-    menu.append(item('fa-pen-to-square', 'Edit', () => selectNode(key)));
+
+    // "Edit" alone was ambiguous: on a persona it reads as editing the persona, not as
+    // selecting the node. Both actions are now named for what they actually do.
+    const opens = OPEN_TARGETS[parseKey(key).type] ?? OPEN_TARGETS[NODE_TYPES.CHARACTER];
+    menu.append(item(opens.icon, opens.label, () => openNodeTarget(key)));
+    menu.append(item('fa-sliders', 'Settings on this chart', () => selectNode(key)));
 
     if (getParent(key)) {
         menu.append(item('fa-link-slash', 'Detach from parent', () => {

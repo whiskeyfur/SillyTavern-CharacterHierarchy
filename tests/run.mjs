@@ -558,9 +558,13 @@ document.documentElement.removeEventListener('mousedown', countPress);
 const menuLabels = [...menu.querySelectorAll('.ch-context-item span')].map((e) => e.textContent);
 check('a nested node is offered a detach',
     menuLabels.includes('Detach from parent'), menuLabels.join(' | '));
-check('it offers edit, focus and removal',
-    menuLabels.includes('Edit') && menuLabels.includes('Focus on this line')
-    && menuLabels.includes('Take off the chart'), menuLabels.join(' | '));
+check('it names the open action for what the node is',
+    menuLabels.includes('Open chat'), menuLabels.join(' | '));
+check('and keeps the chart settings a separate, differently named entry',
+    menuLabels.includes('Settings on this chart'), menuLabels.join(' | '));
+check('it offers focus and removal',
+    menuLabels.includes('Focus on this line') && menuLabels.includes('Take off the chart'),
+    menuLabels.join(' | '));
 
 // dismissals
 document.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
@@ -711,6 +715,19 @@ dblClick('book:Aldia Lore');
 check('double-clicking a lorebook opens it in the world info editor',
     globalThis.__worldInfoOpened === 'Aldia Lore', String(globalThis.__worldInfoOpened));
 
+// the same action, reached from the right-click menu
+globalThis.__worldInfoOpened = null;
+nodeFor(chart, 'book:Aldia Lore').dispatchEvent(
+    new dom.window.MouseEvent('contextmenu', { bubbles: true }));
+const bookMenuLabels = [...document.querySelectorAll('.ch-context-item span')].map((e) => e.textContent);
+check('a lorebook\'s menu names its open action',
+    bookMenuLabels.includes('Open in the world info editor'), bookMenuLabels.join(' | '));
+[...document.querySelectorAll('.ch-context-item')]
+    .find((i) => i.textContent.includes('Open in the world info editor'))
+    .dispatchEvent(new dom.window.Event('click'));
+check('and opens the book from the menu too',
+    globalThis.__worldInfoOpened === 'Aldia Lore', String(globalThis.__worldInfoOpened));
+
 // re-queried: the double click above repainted the chart
 dragTo(listRow('Brant.png'), nodeFor(chart, 'book:Aldia Lore'));
 check('a character can be nested under a lorebook',
@@ -744,8 +761,22 @@ await new Promise((resolve) => setTimeout(resolve, 0)); // the open path awaits
 
 check('double-clicking a persona opens the persona manager at it',
     globalThis.__personaNavigatedTo === 'me.png', String(globalThis.__personaNavigatedTo));
+
 check('and it asked the persona drawer to open', personaToggleClicks === 1,
     String(personaToggleClicks));
+
+globalThis.__personaNavigatedTo = null;
+nodeFor(chart, 'persona:me.png').dispatchEvent(
+    new dom.window.MouseEvent('contextmenu', { bubbles: true }));
+const personaMenuLabels = [...document.querySelectorAll('.ch-context-item span')].map((e) => e.textContent);
+check('a persona\'s menu names its open action',
+    personaMenuLabels.includes('Open in the persona manager'), personaMenuLabels.join(' | '));
+[...document.querySelectorAll('.ch-context-item')]
+    .find((i) => i.textContent.includes('Open in the persona manager'))
+    .dispatchEvent(new dom.window.Event('click'));
+await new Promise((resolve) => setTimeout(resolve, 0));
+check('and opens the persona from the menu too',
+    globalThis.__personaNavigatedTo === 'me.png', String(globalThis.__personaNavigatedTo));
 
 parentCmd2.callback({ char: 'Sir Brant' }, ''); // detach Brant from the lorebook
 S().nodes[K('Brant.png')].parent = 'persona:me.png';
