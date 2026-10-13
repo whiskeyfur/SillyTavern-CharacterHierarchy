@@ -38,15 +38,19 @@
  */
 .ch-drawer.ch-beside-list {
     /*
-     * Both edges are anchored and the width is derived from them, rather than a fixed width
-     * squeezed between them. A fixed width wider than the gap has to put the overflow
-     * somewhere, and with auto margins it goes equally to both sides - which walks the panel
-     * off the left of the screen. Derived, it can never be wider than the gap it sits in.
+     * The left edge is pinned to where the panel sits with the list closed, and only the right
+     * edge comes in. Re-centring in the reduced space instead would slide the whole chart
+     * sideways every time the list appeared - on a 1920px screen with a 479px list, by 240px.
+     *
+     * The width is derived from the two edges rather than fixed, so it can never be wider than
+     * the gap it sits in; when the list is narrow enough not to intrude, max-width caps it and
+     * the panel sits exactly where it would without the list at all.
      */
-    left: var(--ch-gutter);
+    left: calc((100vw - min(86vw, 1062px)) / 2);
     right: calc(var(--ch-list-width, 0px) + var(--ch-gutter));
     width: auto;
     max-width: min(86vw, 1062px);
+    margin: 0;
 }
 
 .ch-drawer-inner {
