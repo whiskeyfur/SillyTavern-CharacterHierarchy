@@ -32,6 +32,7 @@ row, each card showing its avatar and role.](media/panel.png)
   character list: drag a character out of the list and onto the chart.
 - **Lorebooks and personas on the chart too**, not just character cards, so a book can sit in
   the tree without a stand-in card.
+- A **focus mode** that narrows a crowded chart to one character's line.
 - **Inheritance up the whole chain**, not just one level: a grandchild picks up its parent's
   books and its grandparent's.
 - **Actor / informational roles**, so lore containers never have to pretend to be characters.
@@ -76,7 +77,8 @@ Click the **sitemap icon** in the top bar, and open the character list beside it
 with its padlock so both stay on screen.
 
 - **Drag a character out of the character list** and onto the chart to add it. Rows already on
-  the chart are dimmed, so you can see at a glance what is left.
+  the chart are dimmed while the panel is open, so you can see at a glance what is left; close
+  the panel and the list goes back to normal.
 - **Drag a node onto another node** to nest it underneath.
 - **Drag it onto empty chart space** to make it the root of its own tree.
 - **Click a node** to open its settings under the chart, and a small strip of actions directly
@@ -85,6 +87,17 @@ with its padlock so both stay on screen.
 A drop that would nest a node inside its own descendants is refused — the target outlines in
 red instead of green, and nothing moves. Nodes show their portrait, name, role and how many
 extra lorebooks they hold; informational cards have a dashed border.
+
+### Focusing on one line
+
+Once you have more than one tree, the chart gets busy. The **crosshairs** button in the panel
+header narrows it to a single line: the selected node, everything above it, and everything
+below it. Other roots and the side branches off shared ancestors drop out of view, and a note
+along the bottom says how many nodes are hidden so a half-empty chart is never a mystery.
+
+Clicking a different node re-focuses on that one. With nothing selected it follows whichever
+character is currently open, so opening the panel mid-chat shows that character's line. The
+toggle is remembered between sessions, and nothing is deleted — it only changes what is drawn.
 
 ### Taking something off the chart
 

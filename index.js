@@ -147,6 +147,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     maxDepth: 16,
     orderPenaltyPerLevel: 0,
     listFilterState: DEFAULT_FILTER_STATE,
+    focusLineage: false,
     debug: false,
 });
 
@@ -311,6 +312,44 @@ function migrateNodeKeys() {
     store.nodes = migrated;
     console.log(`${LOG} migrated ${Object.keys(migrated).length} nodes to typed keys`);
     return true;
+}
+
+/**
+ * Everything nested under a node, however deep.
+ * @param {string} key The node key.
+ * @returns {Set<string>} Descendant keys, not including the node itself.
+ */
+function getDescendants(key) {
+    const found = new Set();
+    const stack = [key];
+
+    while (stack.length) {
+        for (const child of getChildren(stack.pop())) {
+            // The guard also stops a loop that normalizeNodes has not reached yet.
+            if (!found.has(child)) {
+                found.add(child);
+                stack.push(child);
+            }
+        }
+    }
+
+    return found;
+}
+
+/**
+ * One node's whole line: itself, everything above it, and everything below it.
+ * @param {string} key The node key.
+ * @returns {Set<string>} The lineage.
+ */
+function lineageOf(key) {
+    const maxDepth = Math.max(1, Number(settings().maxDepth) || 1);
+    const lineage = new Set([key, ...getDescendants(key)]);
+
+    for (const ancestor of getAncestors(key, maxDepth)) {
+        lineage.add(ancestor.key);
+    }
+
+    return lineage;
 }
 
 /**
@@ -967,9 +1006,6 @@ let selectedKey = null;
 /** Live drag state, or null when nothing is being dragged. */
 let dragState = null;
 
-/** Set while the panel is hidden, so it repaints when it next opens. */
-let uiDirty = true;
-
 function el(tag, props = {}, children = []) {
     const node = Object.assign(document.createElement(tag), props);
     for (const child of [].concat(children)) {
@@ -1010,9 +1046,38 @@ function field(text, control, hint) {
  *
  * @returns {{positions: Map<string, {x: number, y: number, depth: number}>, width: number, height: number}}
  */
+/**
+ * The nodes the chart should draw.
+ *
+ * Normally everything. With focus on, just one line: the anchor, everything above it and
+ * everything below it — so other roots and the ancestors' other branches drop away.
+ *
+ * @returns {{keys: Set<string>|null, anchor: string|null}} Null keys means draw everything.
+ */
+function focusedKeys() {
+    const store = settings();
+
+    if (!store.focusLineage) {
+        return { keys: null, anchor: null };
+    }
+
+    // Anchor on the selected node, or failing that on whoever is currently open.
+    const context = getContext();
+    const openAvatar = context.characters?.[context.characterId]?.avatar;
+    const anchor = [selectedKey, openAvatar ? charKey(openAvatar) : null]
+        .find((candidate) => candidate && getNode(candidate)) ?? null;
+
+    if (!anchor) {
+        return { keys: null, anchor: null };
+    }
+
+    return { keys: lineageOf(anchor), anchor };
+}
+
 function layoutForest() {
     const store = settings();
     const indexes = indexByAvatar();
+    const { keys: visible } = focusedKeys();
     const byName = (a, b) => displayName(a, indexes).localeCompare(displayName(b, indexes));
 
     /** @type {Map<string, {x: number, y: number, depth: number}>} */
@@ -1029,7 +1094,7 @@ function layoutForest() {
         deepest = Math.max(deepest, depth);
 
         const childCentres = [];
-        for (const child of getChildren(key).sort(byName)) {
+        for (const child of getChildren(key).filter(isShown).sort(byName)) {
             const centre = place(child, depth + 1);
             if (centre !== null) {
                 childCentres.push(centre);
@@ -1048,9 +1113,12 @@ function layoutForest() {
         return x;
     };
 
-    const keys = Object.keys(store.nodes);
+    const keys = Object.keys(store.nodes).filter((key) => !visible || visible.has(key));
+    const shown = new Set(keys);
+    const isShown = (key) => shown.has(key);
 
-    for (const root of keys.filter((key) => !getParent(key)).sort(byName)) {
+    // A node whose parent is hidden becomes a root of what is drawn.
+    for (const root of keys.filter((key) => !getParent(key) || !isShown(getParent(key))).sort(byName)) {
         place(root, 0);
         column += ROOT_GAP;
     }
@@ -1191,6 +1259,12 @@ function detachFromChart(key) {
 function attachDragHandlers(box, key, origin = 'chart') {
     box.addEventListener('pointerdown', (event) => {
         if (event.button !== undefined && event.button !== 0) {
+            return;
+        }
+
+        // Nothing to drop onto while the panel is shut, and every release would count as
+        // "off the chart", which removes things.
+        if (origin === 'list' && !isDrawerOpen()) {
             return;
         }
 
@@ -1429,6 +1503,8 @@ function decorateCharacterList() {
         return;
     }
 
+    const panelOpen = isDrawerOpen();
+
     for (const row of list.querySelectorAll('.character_select')) {
         if (!(row instanceof HTMLElement)) {
             continue;
@@ -1440,7 +1516,9 @@ function decorateCharacterList() {
             continue;
         }
 
-        row.classList.toggle('ch-on-chart', Boolean(getNode(charKey(avatar))));
+        // The dimming is an affordance of the panel. With the panel shut, SillyTavern's list
+        // should look exactly as it drew it.
+        row.classList.toggle('ch-on-chart', panelOpen && Boolean(getNode(charKey(avatar))));
 
         if (!row.dataset.chDragWired) {
             row.dataset.chDragWired = 'true';
@@ -1480,6 +1558,9 @@ function renderChart() {
     // otherwise min-width/min-height of 100% would always overflow the pane by the padding.
     container.style.width = positions.size ? `${width + CHART_PADDING * 2}px` : '';
     container.style.height = positions.size ? `${height + CHART_PADDING * 2}px` : '';
+
+    const { anchor } = focusedKeys();
+    const hidden = Object.keys(settings().nodes).length - positions.size;
 
     if (!positions.size) {
         container.append(el('div', {
@@ -1523,6 +1604,14 @@ function renderChart() {
     }
 
     renderNodeActions(container, positions);
+
+    if (anchor && hidden > 0) {
+        container.append(el('div', {
+            className: 'ch-focus-note',
+            textContent: `Showing only ${displayName(anchor)}'s line — ${hidden} other `
+                + `${hidden === 1 ? 'node is' : 'nodes are'} hidden.`,
+        }));
+    }
 }
 
 /**
@@ -1580,13 +1669,11 @@ function renderAll() {
     updateCharacterButton();
     decorateCharacterList();
 
-    // No point laying out a chart nobody can see; renderAll() runs again on the way in.
+    // No point laying out a chart nobody can see; opening the panel repaints it.
     if (!isDrawerOpen()) {
-        uiDirty = true;
         return;
     }
 
-    uiDirty = false;
     renderChart();
     renderEditor();
 }
@@ -2045,12 +2132,10 @@ async function installDrawer() {
     }
 
     // SillyTavern binds the navbar handler once at startup, so this drawer needs it by hand.
-    toggle.addEventListener('click', () => {
-        doNavbarIconClick.call($(toggle));
-        // The panel is not rendered while hidden, so catch up on the way in.
-        if (uiDirty) {
-            renderAll();
-        }
+    toggle.addEventListener('click', async () => {
+        await doNavbarIconClick.call($(toggle));
+        // Catches the chart up on the way in, and clears the list dimming on the way out.
+        renderAll();
     });
 
     const context = getContext();
@@ -2289,6 +2374,16 @@ function bindSettingsUi() {
     }
 
     document.getElementById('ch_open_drawer')?.addEventListener('click', () => openDrawer());
+    const focusButton = document.getElementById('ch_focus');
+    const paintFocus = () => focusButton?.classList.toggle('ch-toggle-on', Boolean(settings().focusLineage));
+    paintFocus();
+    focusButton?.addEventListener('click', () => {
+        settings().focusLineage = !settings().focusLineage;
+        getContext().saveSettingsDebounced();
+        paintFocus();
+        renderChart();
+    });
+
     document.getElementById('ch_add_book')?.addEventListener('click', () => addNodeOfType(NODE_TYPES.BOOK));
     document.getElementById('ch_add_persona')?.addEventListener('click', () => addNodeOfType(NODE_TYPES.PERSONA));
     document.getElementById('ch_preview')?.addEventListener('click', () => showPreview());

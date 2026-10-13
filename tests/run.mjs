@@ -199,6 +199,7 @@ check('the chart is not painted while the drawer is closed',
     String(document.getElementById('ch_chart').children.length));
 
 document.getElementById('ch_open_drawer').dispatchEvent(new dom.window.Event('click'));
+await new Promise((resolve) => setTimeout(resolve, 0)); // the toggle repaints asynchronously
 check('the Extensions pointer opens the drawer', drawerContent.classList.contains('openDrawer'));
 check('the icon flips to open',
     !!drawerButton.querySelector('.drawer-icon.openIcon'));
@@ -636,6 +637,77 @@ check('export captures the typed tree',
 S().enabled = false;
 check('the master switch stops all injection', (await scan()).length === 0);
 S().enabled = true;
+
+// ---------- T29b: the dimming belongs to the panel ----------
+setTree({ 'Aldia.png': node(null), 'Vance.png': node('Aldia.png'), 'Brant.png': node('Vance.png') });
+await redraw();
+const chToggle = drawerButton.querySelector('.drawer-toggle');
+const drawerIsOpen = () => drawerContent.classList.contains('openDrawer');
+async function setDrawer(open) {
+    if (drawerIsOpen() !== open) {
+        chToggle.dispatchEvent(new dom.window.Event('click'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+}
+
+await setDrawer(true);
+check('rows on the chart are dimmed while the panel is open',
+    listRow('Aldia.png').classList.contains('ch-on-chart'));
+
+await setDrawer(false);
+check('closing the panel clears the dimming',
+    !charList.querySelector('.ch-on-chart'),
+    [...charList.querySelectorAll('.ch-on-chart')].length + ' still dimmed');
+
+// With the chart hidden every release counts as "off the chart", which would remove things.
+dragTo(listRow('Aldia.png'), document.body);
+check('a list drag does nothing while the panel is shut', !!N('Aldia.png'));
+
+await setDrawer(true);
+check('reopening the panel brings the dimming back',
+    listRow('Aldia.png').classList.contains('ch-on-chart'));
+
+// ---------- T29c: focusing on one line ----------
+setTree({
+    'Aldia.png': node(null),
+    'Vance.png': node('Aldia.png'),
+    'Brant.png': node('Vance.png'),
+    'Mira.png': node('Aldia.png'),   // a side branch off the shared ancestor
+    'Weather.png': node(null),       // a separate root entirely
+});
+await redraw();
+const drawn = () => [...chart.querySelectorAll('.ch-node')].map((b) => b.dataset.key).sort();
+
+check('with focus off, every tree is drawn', drawn().length === 5, JSON.stringify(drawn()));
+
+clickCard(nodeFor(chart, K('Vance.png')));
+document.getElementById('ch_focus').dispatchEvent(new dom.window.Event('click'));
+
+check('the focus toggle is remembered', S().focusLineage === true);
+check('the toggle shows as on',
+    document.getElementById('ch_focus').classList.contains('ch-toggle-on'));
+check('focus keeps the selected node, its ancestors and its descendants',
+    JSON.stringify(drawn()) === JSON.stringify([K('Aldia.png'), K('Brant.png'), K('Vance.png')].sort()),
+    JSON.stringify(drawn()));
+check('a separate root is hidden', !nodeFor(chart, K('Weather.png')));
+check('a side branch off a shared ancestor is hidden', !nodeFor(chart, K('Mira.png')));
+check('the chart says what it is hiding',
+    chart.querySelector('.ch-focus-note')?.textContent.includes('2 other nodes are hidden'),
+    chart.querySelector('.ch-focus-note')?.textContent);
+check('connectors only join what is drawn',
+    chart.querySelectorAll('path.ch-link').length === 2,
+    String(chart.querySelectorAll('path.ch-link').length));
+
+// selecting a leaf narrows it to that single line
+clickCard(nodeFor(chart, K('Brant.png')));
+check('focusing a leaf drops the branches below the selection',
+    JSON.stringify(drawn()) === JSON.stringify([K('Aldia.png'), K('Brant.png'), K('Vance.png')].sort()),
+    JSON.stringify(drawn()));
+
+document.getElementById('ch_focus').dispatchEvent(new dom.window.Event('click'));
+check('turning focus off brings everything back', drawn().length === 5, JSON.stringify(drawn()));
+check('the toggle shows as off',
+    !document.getElementById('ch_focus').classList.contains('ch-toggle-on'));
 
 // ---------- T30: the tri-state character list filter ----------
 const { entitiesFilter } = await import(path.join(TMP, 'public/script.js'));

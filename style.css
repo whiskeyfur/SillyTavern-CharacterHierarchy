@@ -214,6 +214,22 @@
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
+/* A header toggle that is currently on. */
+.ch-panel-head .menu_button.ch-toggle-on {
+    color: var(--SmartThemeQuoteColor);
+    box-shadow: 0 0 0 1px var(--SmartThemeQuoteColor) inset;
+}
+
+/* Says what focus mode is hiding, so a half-empty chart is never a mystery. */
+.ch-focus-note {
+    position: absolute;
+    left: var(--ch-pad);
+    bottom: 0;
+    font-size: calc(var(--mainFontSize) * 0.8);
+    opacity: 0.7;
+    pointer-events: none;
+}
+
 .ch-empty {
     opacity: 0.6;
     padding: 0.75em;
